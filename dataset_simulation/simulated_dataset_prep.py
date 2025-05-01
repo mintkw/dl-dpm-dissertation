@@ -2,11 +2,13 @@ import csv
 import os
 import pandas as pd
 import numpy as np
-from config import DATA_DIR
+from config import SIMULATED_DATA_DIR
 
 
-def prepare_csv_for_kde_ebm(csv_path):
-    output_path = os.path.join(csv_path.split('.csv')[0]) + '_kde-ebm.csv'
+def prepare_csv_for_kde_ebm(csv_path, suffix):
+    # suffix: to add to the end of prepared dataset csv files
+
+    output_path = os.path.join(csv_path.split('.csv')[0]) + f"_{suffix}.csv"
 
     df = pd.read_csv(csv_path)
     N = df.shape[0]  # number of datapoints
@@ -24,6 +26,12 @@ def prepare_csv_for_kde_ebm(csv_path):
             writer.writerow(measurements)
 
 
-simulated_data_dir = os.path.join("..", DATA_DIR, "simulated")
-prepare_csv_for_kde_ebm(os.path.join("..", DATA_DIR, ) "../ebm_synthetic_600_5.csv")
-prepare_csv_for_kde_ebm("../dpm_synthetic_600_5.csv")
+if __name__ == "__main__":
+    # Converts all dataset csv files in the simulated data directory that do not have the prepared data suffix
+    suffix = "kde-ebm"
+    simulated_data_dir = os.path.join("..", SIMULATED_DATA_DIR)
+
+    for filename in os.listdir(simulated_data_dir):
+        split_filename = os.path.splitext(filename)
+        if split_filename[-1] == ".csv" and split_filename[0].split('_')[-1] != suffix:
+            prepare_csv_for_kde_ebm(os.path.join(simulated_data_dir, filename), suffix=suffix)

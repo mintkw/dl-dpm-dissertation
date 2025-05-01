@@ -1,3 +1,5 @@
+# Credit to Christopher Parker
+
 def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_res=None, n_controls=0,
                     n_patients=0, means_normal=None, means_abnormal=None, sds_normal=None,
                     sds_abnormal=None, biomarker_labels=None, label_points=True, permutation=[],
