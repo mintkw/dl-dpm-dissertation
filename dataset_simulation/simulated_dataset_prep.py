@@ -2,6 +2,7 @@ import csv
 import os
 import pandas as pd
 import numpy as np
+from config import DATA_DIR
 
 
 def prepare_csv_for_kde_ebm(csv_path):
@@ -23,5 +24,6 @@ def prepare_csv_for_kde_ebm(csv_path):
             writer.writerow(measurements)
 
 
-prepare_csv_for_kde_ebm("ebm_synthetic_600_5.csv")
-prepare_csv_for_kde_ebm("dpm_synthetic_600_5.csv")
+simulated_data_dir = os.path.join("..", DATA_DIR, "simulated")
+prepare_csv_for_kde_ebm(os.path.join("..", DATA_DIR, ) "../ebm_synthetic_600_5.csv")
+prepare_csv_for_kde_ebm("../dpm_synthetic_600_5.csv")

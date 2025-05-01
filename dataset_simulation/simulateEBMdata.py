@@ -1,15 +1,30 @@
+# Credit to Christopher Parker
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import pandas as pd
+import string
+
+
+def seq2stages(seq):
+    # SEQ is in PO format i.e. list ofl ists
+    seq_vec = [item for sublist in seq for item in sublist]
+    n_biomarkers = len(seq_vec)
+    n_stages = len(seq)+1
+    stages = [[0] * n_biomarkers] + [[0]*n_biomarkers for _ in range(n_stages-1)]
+    for i in range(1,n_stages):
+        event_inds_stage_i = seq[i-1]
+        for event_ind in event_inds_stage_i:
+            for k in range(i,n_stages):
+                stages[k][event_ind] = 1
+    return stages
+
 def simulateEBMdata(seq, n_mci, means_normal, means_abnormal, sds_normal, sds_abnormal, biomarker_labels, force_uniform_stages=True, plot=False, n_controls=0, n_patients=0):
     # SEQ: in partial order format i.e. [[0],[1,2]]
-    # Modules
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import os
-    import pandas as pd
-    import string
     # prev_dir = os.getcwd()
     # script_dir = '/Users/christopherparker/Documents/GitHubProjects/dDPM/python'
     # os.chdir(script_dir)
-    from seq2stages import seq2stages
+
     # os.chdir(prev_dir)
     #
     stages = seq2stages(seq)
