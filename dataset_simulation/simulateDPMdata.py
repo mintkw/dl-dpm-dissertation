@@ -137,11 +137,11 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_re
 
 
     # Sequence (if specified) & onsets
-    if seq == None:
+    if seq is None:
         # Default Onsets for each biomarker
-        if onsets==None: onsets = np.array([i*(max_time/(n_biomarkers+1)) for i in range(1,n_biomarkers+1)]) 
+        if onsets is None: onsets = np.array([i*(max_time/(n_biomarkers+1)) for i in range(1,n_biomarkers+1)])
         # Stage temporal resolution (if specified, overrides the supplied onsets, assuming a linear order)
-        if stage_res!=None:
+        if stage_res is not None:
             n_stages = n_biomarkers+1
             total_time_nonends = (n_stages - 2) * stage_res # time from first to last transition
             min_time_stage = 0 + (max_time - total_time_nonends)/2
@@ -158,7 +158,7 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_re
         n_stages = len(seq) + 1 # including stage 0
         onsets = np.array([np.nan for i in range(n_biomarkers)]) # onset of each biomarker
         # Stage onsets (if stage temporal resolution is specified, it determines the stage onsets, else they're determined by equidistant spacing)
-        if stage_res==None:
+        if stage_res is None:
             onsets_stages = np.array([i*(max_time/n_stages) for i in range(n_stages)])[1:] # onset time of each (non-zero) stage
         else:
             total_time_nonends = (n_stages - 2) * stage_res # time from first to last transition
