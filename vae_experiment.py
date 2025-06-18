@@ -6,7 +6,7 @@ import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR, DEVICE, VAE_MODEL_DIR
+from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR, DEVICE, MODEL_DIR
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 
@@ -25,7 +25,7 @@ class Encoder(nn.Module):
 
     def forward(self, X):
         h = self.net(X)
-        mu = self.fc_mu(h)
+        mu = torch.sigmoid(self.fc_mu(h))
         log_sigma = self.fc_sigma(h)
         sigma = torch.exp(log_sigma)  # exponentiate to enforce non-negativity
 
@@ -72,17 +72,17 @@ def compute_elbo(enc, dec, X, device):
 
 def train_vae(N_epochs, enc, dec, train_loader, train_dataset, optimiser, dataset_name, device):
     lowest_reconstruction_error = float('inf')
-    enc_path = os.path.join(VAE_MODEL_DIR, "enc_" + dataset_name + ".pth")
-    dec_path = os.path.join(VAE_MODEL_DIR, "dec_" + dataset_name + ".pth")
+    vae_model_dir = os.path.join(MODEL_DIR, "vae")
+    os.makedirs(vae_model_dir, exist_ok=True)
 
-    # Create necessary directories
-    os.makedirs(VAE_MODEL_DIR, exist_ok=True)
+    enc_path = os.path.join(vae_model_dir, "enc_" + dataset_name + ".pth")
+    dec_path = os.path.join(vae_model_dir, "dec_" + dataset_name + ".pth")
 
     for epoch in tqdm(range(N_epochs), desc="Training VAE"):
         train_loss = 0.0
         for (X, _) in train_loader:
             X = X.to(device)
-            opt_vae.zero_grad()
+            optimiser.zero_grad()
 
             elbos = compute_elbo(enc, dec, X, device)
 
@@ -120,7 +120,7 @@ def evaluate(dataloader, enc, dec, device):
 
     # scale predictions
     predictions = torch.concatenate(predictions).squeeze().to(device)
-    predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
+    # predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
     # predictions = torch.sigmoid(predictions)
 
     # scale stages
