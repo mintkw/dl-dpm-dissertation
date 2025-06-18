@@ -22,12 +22,19 @@ def prepare_csv_for_kde_ebm(csv_path, suffix):
             row = list(df.iloc[i])
             measurements = row[:-3]
             label = np.argmax(row[-3:])
+
+            # for kde-ebm, it should be 0 for CN, 1 for AD, 2 for MCI so labels need to be corrected
+            if label == 1:
+                label = 2
+            elif label == 2:
+                label = 1
+
             measurements.append(label)
             writer.writerow(measurements)
 
 
 if __name__ == "__main__":
-    # Converts all dataset csv files in the simulated data directory that do not have the prepared data suffix
+    # Converts all dataset csv files in the synthetic data directory that do not have the prepared data suffix
     suffix = "kde-ebm"
     simulated_obs_dir = os.path.join("..", SIMULATED_OBSERVATIONS_DIR)
 

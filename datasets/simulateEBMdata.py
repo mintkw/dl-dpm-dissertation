@@ -7,7 +7,7 @@ import string
 
 
 def seq2stages(seq):
-    # SEQ is in PO format i.e. list ofl ists
+    # SEQ is in PO format i.e. list of lists
     seq_vec = [item for sublist in seq for item in sublist]
     n_biomarkers = len(seq_vec)
     n_stages = len(seq)+1
@@ -21,12 +21,6 @@ def seq2stages(seq):
 
 def simulateEBMdata(seq, n_mci, means_normal, means_abnormal, sds_normal, sds_abnormal, biomarker_labels, force_uniform_stages=True, plot=False, n_controls=0, n_patients=0):
     # SEQ: in partial order format i.e. [[0],[1,2]]
-    # prev_dir = os.getcwd()
-    # script_dir = '/Users/christopherparker/Documents/GitHubProjects/dDPM/python'
-    # os.chdir(script_dir)
-
-    # os.chdir(prev_dir)
-    #
     stages = seq2stages(seq)
     n_stages = len(stages)
     n_subjects = n_controls + n_mci + n_patients
@@ -80,8 +74,8 @@ def simulateEBMdata(seq, n_mci, means_normal, means_abnormal, sds_normal, sds_ab
         colors_mci = colpal[:n_biomarkers]  # ['b', 'r'] #['darkorange', 'orangered']
         fig, ax = plt.subplots(figsize=(10, 5))
         for i in range(n_biomarkers):
-            ax.plot(ks_mci_plot_pre, X_mci_gt[:, i], color=colors_mci[i], label=biomarker_labels[i] + '-GT')
-            ax.plot(ks_mci_pre, X_mci[:, i], '.', color=colors_mci[i], label=biomarker_labels[i])
+            ax.plot(ks_mci_plot_pre, X_mci_gt[:, i], color=colors_mci[i], label=str(biomarker_labels[i]) + '-GT')
+            ax.plot(ks_mci_pre, X_mci[:, i], '.', color=colors_mci[i], label=str(biomarker_labels[i]))
         ax.set_xlabel("Disease Stage", fontsize=20)
         ax.set_ylabel("Biomarker", fontsize=20)
         plt.legend(loc="upper left")

@@ -22,7 +22,7 @@ def mixture_model_grid(X, y, mixtures,
                        score_names=None, class_names=None, hist_align='left'):
     n_particp, n_biomarkers = X.shape
     if score_names is None:
-        score_names = ['BM{}'.format(x+1) for x in range(n_biomarkers)]
+        score_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
     if class_names is None:
         class_names = ['CN', 'AD']
     n_x = np.round(np.sqrt(n_biomarkers)).astype(int)
@@ -89,19 +89,26 @@ def mcmc_trace(mcmc_samples):
     return fig, ax
 
 
-def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None):
-    if ml_order is None:
-        ml_order = mcmc_samples[0].ordering
+def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None, gt_order=None):
+    # kw: if gt_order is not None, plot in order of gt_order rather than ml_order
+    if gt_order is None:
+        if ml_order is None:
+            plotting_order = mcmc_samples[0].ordering
+        else:
+            plotting_order = ml_order.ordering
+
     else:
-        ml_order = ml_order.ordering
-    n_biomarkers = ml_order.shape[0]
+        plotting_order = np.array(gt_order)
+
+
+    n_biomarkers = plotting_order.shape[0]
     if score_names is None:
-        score_names = ['BM{}'.format(x+1) for x in range(n_biomarkers)]
+        score_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
     all_orders = [x.ordering for x in mcmc_samples]
     all_orders = np.array(all_orders)
     confusion_mat = np.zeros((n_biomarkers, n_biomarkers))
     for i in range(n_biomarkers):
-        confusion_mat[i, :] = np.sum(all_orders == ml_order[i], axis=0)
+        confusion_mat[i, :] = np.sum(all_orders == plotting_order[i], axis=0)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.imshow(confusion_mat, interpolation='nearest', cmap='Purples')
@@ -119,7 +126,7 @@ def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None):
     ax.set_yticks(tick_marks_y+0.2)
     trimmed_scores = [x[2:].replace('_', ' ') if x.startswith('p_')
                       else x.replace('_', ' ') for x in score_names]
-    ax.set_yticklabels(np.array(trimmed_scores, dtype='object')[ml_order],
+    ax.set_yticklabels(np.array(trimmed_scores, dtype='object')[plotting_order],
                        rotation=30, ha='right',
                        rotation_mode='anchor')
 
