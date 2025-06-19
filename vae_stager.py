@@ -9,6 +9,7 @@ from tqdm import tqdm
 from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR, DEVICE, MODEL_DIR
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from evaluation import evaluate_autoencoder
 
 
 class Encoder(nn.Module):
@@ -50,9 +51,21 @@ class Decoder(nn.Module):
         return dist.Normal(X_mu, X_sigma)
 
 
-def compute_elbo(enc, dec, X, device):
+class VAE:
+    def __init__(self, enc, dec):
+        self.enc = enc
+        self.dec = dec
+
+    def encode(self, X):
+        return self.enc(X).mean
+
+    def reconstruct(self, X):
+        return self.dec(self.enc(X).sample()).sample()
+
+
+def compute_elbo(vae, X, device):
     # q(z | X)
-    q_z = enc(X)
+    q_z = vae.enc(X)
 
     # sample a vector z from q(z | X), using the reparameterisation trick
     epsilon = dist.Normal(0, 1).sample(q_z.mean.shape).to(device)  # not sure if this is right lol
@@ -62,7 +75,7 @@ def compute_elbo(enc, dec, X, device):
     log_prior = dist.Normal(0, 1).log_prob(z).sum(-1)
 
     # log posterior : log p(x_i | z_i)
-    log_posterior = dec(z).log_prob(X).sum(-1).sum(-1).sum(-1)
+    log_posterior = vae.dec(z).log_prob(X).sum(-1).sum(-1).sum(-1)
 
     # log q(z_i | x_i)
     log_qz = q_z.log_prob(z).sum(-1)
@@ -70,7 +83,7 @@ def compute_elbo(enc, dec, X, device):
     return log_prior + log_posterior - log_qz
 
 
-def train_vae(N_epochs, enc, dec, train_loader, train_dataset, optimiser, dataset_name, device):
+def train_vae(N_epochs, vae, train_loader, train_dataset, optimiser, dataset_name, device):
     lowest_reconstruction_error = float('inf')
     vae_model_dir = os.path.join(MODEL_DIR, "vae")
     os.makedirs(vae_model_dir, exist_ok=True)
@@ -84,7 +97,7 @@ def train_vae(N_epochs, enc, dec, train_loader, train_dataset, optimiser, datase
             X = X.to(device)
             optimiser.zero_grad()
 
-            elbos = compute_elbo(enc, dec, X, device)
+            elbos = compute_elbo(vae, X, device)
 
             # The loss is the sum of the negative per-datapoint ELBO
             loss = -elbos.sum()
@@ -94,70 +107,40 @@ def train_vae(N_epochs, enc, dec, train_loader, train_dataset, optimiser, datase
 
         if epoch % 10 == 0:
             # compute error between latents and stages - just to track progress
-            mse_stage_error, reconstruction_error = evaluate(train_dataloader, enc, dec, device)
+            mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, vae, device)
 
             if reconstruction_error < lowest_reconstruction_error:
                 lowest_reconstruction_error = min(reconstruction_error.item(), lowest_reconstruction_error)
-                torch.save(enc.state_dict(), enc_path)
-                torch.save(dec.state_dict(), dec_path)
+                torch.save(vae.enc.state_dict(), enc_path)
+                torch.save(vae.dec.state_dict(), dec_path)
 
             print(f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
 
 
-def evaluate(dataloader, enc, dec, device):
-    predictions = []
-    gt_stages = []
-    reconstruction_errors = []
-    with torch.no_grad():
-        for X, label in dataloader:
-            gt_stages.append(label)
-
-            X = X.to(device)
-            raw_preds = enc(X).mean  # take mean as preds or sample?
-            predictions.append(raw_preds)
-
-            reconstruction_errors.append((dec(enc(X).sample()).sample() - X) ** 2)
-
-    # scale predictions
-    predictions = torch.concatenate(predictions).squeeze().to(device)
-    # predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
-    # predictions = torch.sigmoid(predictions)
-
-    # scale stages
-    gt_stages = torch.concatenate(gt_stages).to(device)
-    gt_stages /= torch.max(gt_stages)
-
-    reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
-
-    # latent can scale in an opposite direction to stages, so try both directions and take the min error
-    mse_stage_error = torch.min(torch.mean((predictions - gt_stages) ** 2),
-                                torch.mean((predictions - 1 + gt_stages) ** 2))
-
-    reconstruction_error = torch.mean(reconstruction_errors)
-
-    return mse_stage_error, reconstruction_error
-
-
-if __name__ == "__main__":
-    dataset_name = "synthetic_1200_50_dpm_0"
-    # VAE trying to infer stage with latent space
-    train_set = SyntheticDatasetVec(dataset_name=dataset_name)
-    train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
-
-    example_x, _ = next(iter(train_dataloader))
-    num_biomarkers = example_x.shape[1]
-
-    enc = Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    dec = Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
-
-    opt_vae = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()), lr=0.001)
-
-    # Run training loop
-    n_epochs = 200
-    train_vae(n_epochs, enc, dec, train_dataloader, train_set, opt_vae, dataset_name, DEVICE)
-
-    # Evaluate by computing MSE error
-    print("Mean squared error:", evaluate(train_dataloader, enc, dec, DEVICE)[0])
+# if __name__ == "__main__":
+#     dataset_name = "synthetic_120_10_dpm_0"
+#     # VAE trying to infer stage with latent space
+#     train_set = SyntheticDatasetVec(dataset_name=dataset_name)
+#     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
+#
+#     example_x, _ = next(iter(train_dataloader))
+#     num_biomarkers = example_x.shape[1]
+#
+#     # Define network
+#     enc = Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
+#     dec = Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
+#
+#     vae = VAE(enc=enc, dec=dec)
+#
+#     # Define optimiser
+#     opt_vae = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()), lr=0.001)
+#
+#     # Run training loop
+#     n_epochs = 50
+#     train_vae(n_epochs, vae, train_dataloader, train_set, opt_vae, dataset_name, DEVICE)
+#
+#     # Evaluate by computing MSE error
+#     print("Mean squared error:", evaluate_autoencoder(train_dataloader, vae, DEVICE)[0])
 
     # # VAE trying to infer seq with latent space
     # train_set = SyntheticDatasetMat(labels_dir=SIMULATED_LABELS_DIR, obs_dir=SIMULATED_OBSERVATIONS_DIR)

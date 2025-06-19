@@ -11,10 +11,10 @@ if __name__ == "__main__":
     # print("Seed set to", seed)
 
     # define a common configuration to use for both models.
-    n_biomarkers = 50
-    n_mci = 1000
-    n_controls = 100
-    n_patients = 100
+    n_biomarkers = 100
+    n_mci = 5000
+    n_controls = 200
+    n_patients = 200
     means_normal = np.zeros(n_biomarkers)
     means_abnormal = np.ones(n_biomarkers)
     # sds_normal = 0.05 * np.ones(n_biomarkers)
