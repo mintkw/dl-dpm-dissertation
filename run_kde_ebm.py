@@ -12,6 +12,7 @@ from kde_ebm import mcmc
 from kde_ebm import plotting
 from kde_ebm import datasets
 from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR
+from evaluation import evaluate_sequence
 
 
 def main():
@@ -72,8 +73,8 @@ def main():
     plt.show()
 
     # compute kendall-tau distance between ml order and gt order
-    print(f"Kendall's tau between ground truth and ML order: {stats.kendalltau(gt_order, ml_order.ordering).statistic}")
-    # np.argsort both
+    print(f"Kendall's tau between ground truth and ML order: {evaluate_sequence(gt_order, ml_order.ordering)}")
+    # todo: np.argsort both
 
 
 if __name__ == '__main__':

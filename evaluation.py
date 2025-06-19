@@ -1,4 +1,6 @@
 import torch
+import scipy
+import numpy as np
 
 
 def evaluate_autoencoder(dataloader, net, device):
@@ -45,3 +47,8 @@ def evaluate_autoencoder(dataloader, net, device):
     reconstruction_error = torch.mean(reconstruction_errors)
 
     return mse_stage_error, reconstruction_error
+
+
+def evaluate_sequence(preds, gt):
+    # Returns the Kendall's tau distance between the predicted and ground truth sequences. Expects both as a flat numpy array.
+    return scipy.stats.kendalltau(np.argsort(preds), np.argsort(gt))
