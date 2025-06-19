@@ -83,40 +83,6 @@ def compute_elbo(vae, X, device):
     return log_prior + log_posterior - log_qz
 
 
-def train_vae(N_epochs, vae, train_loader, train_dataset, optimiser, dataset_name, device):
-    lowest_reconstruction_error = float('inf')
-    vae_model_dir = os.path.join(MODEL_DIR, "vae")
-    os.makedirs(vae_model_dir, exist_ok=True)
-
-    enc_path = os.path.join(vae_model_dir, "enc_" + dataset_name + ".pth")
-    dec_path = os.path.join(vae_model_dir, "dec_" + dataset_name + ".pth")
-
-    for epoch in tqdm(range(N_epochs), desc="Training VAE"):
-        train_loss = 0.0
-        for (X, _) in train_loader:
-            X = X.to(device)
-            optimiser.zero_grad()
-
-            elbos = compute_elbo(vae, X, device)
-
-            # The loss is the sum of the negative per-datapoint ELBO
-            loss = -elbos.sum()
-            loss.backward()
-            optimiser.step()
-            train_loss += loss.item() * X.shape[0] / len(train_dataset)
-
-        if epoch % 10 == 0:
-            # compute error between latents and stages - just to track progress
-            mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, vae, device)
-
-            if reconstruction_error < lowest_reconstruction_error:
-                lowest_reconstruction_error = min(reconstruction_error.item(), lowest_reconstruction_error)
-                torch.save(vae.enc.state_dict(), enc_path)
-                torch.save(vae.dec.state_dict(), dec_path)
-
-            print(f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
-
-
 # if __name__ == "__main__":
 #     dataset_name = "synthetic_120_10_dpm_0"
 #     # VAE trying to infer stage with latent space

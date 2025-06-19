@@ -53,40 +53,6 @@ class AE:
         return self.dec(self.enc(X))
 
 
-def train_ae(N_epochs, net, train_loader, train_dataset, optimiser, dataset_name, device):
-    lowest_reconstruction_error = float('inf')
-    ae_model_dir = os.path.join(MODEL_DIR, "ae")
-    os.makedirs(ae_model_dir, exist_ok=True)
-
-    enc_path = os.path.join(ae_model_dir, "enc_" + dataset_name + ".pth")
-    dec_path = os.path.join(ae_model_dir, "dec_" + dataset_name + ".pth")
-
-    for epoch in tqdm(range(N_epochs), desc="Training AE"):
-        train_loss = 0.0
-        for X, _ in train_loader:
-            X = X.to(device)
-
-            optimiser.zero_grad()
-
-            reconstructions = net.reconstruct(X)
-            loss = ((X - reconstructions) ** 2).sum()
-
-            loss.backward()
-            optimiser.step()
-            train_loss += loss.item() * X.shape[0] / len(train_dataset)  # todo: wait is this formula correct for moving average pls advise...
-
-        if epoch % 10 == 0:
-            # compute error between latents and stages - just to track progress
-            mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
-
-            if reconstruction_error < lowest_reconstruction_error:
-                lowest_reconstruction_error = min(reconstruction_error.item(), lowest_reconstruction_error)
-                torch.save(net.enc.state_dict(), enc_path)
-                torch.save(net.dec.state_dict(), dec_path)
-
-            print(f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
-
-
 # if __name__ == "__main__":
 #     dataset_name = "synthetic_120_10_dpm_0"
 #
