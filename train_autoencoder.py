@@ -6,7 +6,7 @@ import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR, DEVICE, MODEL_DIR
+from config import DEVICE, MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 
@@ -22,6 +22,11 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
     enc_path = os.path.join(model_dir, "enc_" + dataset_name + ".pth")
     dec_path = os.path.join(model_dir, "dec_" + dataset_name + ".pth")
 
+    epochs_without_improvement = 0
+    best_reconstruction_error = float('inf')
+    epoch_patience = 10
+    minimum_improvement = 1e-4  # Stop training if improvement falls below this
+
     for epoch in tqdm(range(n_epochs), desc=f"Training {model_name}"):
         train_loss = 0.0
         for (X, _) in train_loader:
@@ -34,30 +39,48 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
             optimiser.step()
             train_loss += loss.item() * X.shape[0] / dataset_size
 
+        # compute error between latents and stages - just to track progress
+        mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
+
+        if reconstruction_error < best_reconstruction_error:
+            reconstruction_improvement = best_reconstruction_error - reconstruction_error
+            best_reconstruction_error = reconstruction_error
+            torch.save(net.enc.state_dict(), enc_path)
+            torch.save(net.dec.state_dict(), dec_path)
+            epochs_without_improvement = 0
+
+            # Terminate training early if reconstruction improvement is below minimum accepted improvement
+            if reconstruction_improvement < minimum_improvement:
+                print(f"Ending training early as observed improvement is now under {minimum_improvement}")
+                return
+        else:
+            # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
+            epochs_without_improvement += 1
+
+            if epochs_without_improvement >= epoch_patience:
+                print(
+                    f"Ending training early as no decrease in reconstruction error observed in {epoch_patience} epochs")
+                return
+
         if epoch % 10 == 0:
-            # compute error between latents and stages - just to track progress
-            mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
-
-            if reconstruction_error < lowest_reconstruction_error:
-                lowest_reconstruction_error = min(reconstruction_error.item(), lowest_reconstruction_error)
-                torch.save(net.enc.state_dict(), enc_path)
-                torch.save(net.dec.state_dict(), dec_path)
-
-            print(f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
-
+            print(
+                f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
 
 
 if __name__ == "__main__":
-    # dataset_name = "synthetic_600_30_dpm_0"
+    # dataset_name = "synthetic_100_5_ebm_0"
     dataset_name = "synthetic_120_10_dpm_0"
 
-    train_set = SyntheticDatasetVec(dataset_name=dataset_name)
+    train_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
+
+    # val_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    # val_loader = torch.utils.data.DataLoader(val_set, batch_size=4, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
 
-    n_epochs = 50
+    n_epochs = 1000
 
     # ---------- Train VAE -----------
     # Define network
@@ -70,7 +93,6 @@ if __name__ == "__main__":
     opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    # todo: can i make the following a lambda function
     def vae_criterion(X, vae, device):
         elbos = vae_stager.compute_elbo(vae, X, device)
 
@@ -93,12 +115,12 @@ if __name__ == "__main__":
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    # todo: can i make the following a lambda function
     def ae_criterion(X, ae, device):
         reconstructions = ae.reconstruct(X)
         loss = ((X - reconstructions) ** 2).sum()
 
         return loss
+
     run_training(n_epochs, ae, len(train_set), train_loader, opt_ae, ae_criterion, model_name="ae", device=DEVICE)
 
     # Evaluate by computing MSE error

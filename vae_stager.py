@@ -6,7 +6,7 @@ import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR, DEVICE, MODEL_DIR
+from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, MODEL_DIR
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder

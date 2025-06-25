@@ -8,15 +8,14 @@ import ae_stager
 import plotting
 
 
-
 if __name__ == "__main__":
     dataset_name = "synthetic_120_10_dpm_0"
 
     # Load training and validation sets
     train_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
-    # val_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
-    # val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
+    val_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
@@ -34,10 +33,25 @@ if __name__ == "__main__":
     ae_dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
 
     # Plot biomarker levels against predicted stages
-    fig, ax = plotting.staged_biomarker_plots(train_loader, num_biomarkers, ae, DEVICE)
+    fig, ax = plotting.staged_biomarker_plots(train_loader, ae, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on training set")
+    fig.show()
+
+    fig, ax = plotting.staged_biomarker_plots(val_loader, ae, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on validation set")
     fig.show()
 
     # Plot predicted stages against true stages
-    fit, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, ae, DEVICE)
+    fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, ae, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on training set")
+    fig.show()
+
+    fig, ax = plotting.predicted_stage_comparison(val_loader, num_biomarkers, ae, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on validation set")
+    fig.show()
 
     plt.show()

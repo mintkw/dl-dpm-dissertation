@@ -8,10 +8,14 @@ from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 import ae_stager
 
 
-def staged_biomarker_plots(dataloader, num_biomarkers, net, device, fit_curves=False):
+def staged_biomarker_plots(dataloader, net, device):
     X = []
     preds = []
     # labels = []
+
+    # Get number of biomarkers
+    example, _ = next(iter(dataloader))
+    num_biomarkers = example.shape[1]
 
     # Get data and corresponding predictions
     with torch.no_grad():
@@ -65,7 +69,7 @@ def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
 
     fig, ax = plt.subplots(figsize=(9, 6))
     ax.scatter(labels, preds)
-    ax.set_title("Predicted vs ground truth stages")
+    fig.suptitle("Predicted vs ground truth stages")
     ax.set_xlabel("Ground truth")
     ax.set_ylabel("Prediction")
 

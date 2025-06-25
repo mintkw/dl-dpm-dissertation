@@ -31,7 +31,7 @@ def evaluate_autoencoder(dataloader, net, device):
 
     # scale predictions
     predictions = torch.concatenate(predictions).squeeze().to(device)
-    predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
+    # predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
     # predictions = torch.sigmoid(predictions)
 
     # scale stages
@@ -51,4 +51,4 @@ def evaluate_autoencoder(dataloader, net, device):
 
 def evaluate_sequence(preds, gt):
     # Returns the Kendall's tau distance between the predicted and ground truth sequences. Expects both as a flat numpy array.
-    return scipy.stats.kendalltau(np.argsort(preds), np.argsort(gt))
+    return scipy.stats.kendalltau(np.argsort(preds), np.argsort(gt)).statistic

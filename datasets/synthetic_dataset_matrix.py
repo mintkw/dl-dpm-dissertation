@@ -8,7 +8,7 @@ import os
 import pandas as pd
 import json
 
-from config import SIMULATED_LABELS_DIR, SIMULATED_OBSERVATIONS_DIR
+from config import SIMULATED_LABEL_DIR, SIMULATED_OBS_DIR
 
 
 class SyntheticDatasetMat(Dataset):

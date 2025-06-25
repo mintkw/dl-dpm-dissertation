@@ -5,13 +5,13 @@ from matplotlib import pyplot as plt
 import os
 import time
 import json
-from scipy import stats
+import numpy as np
 
 from kde_ebm import mixture_model
 from kde_ebm import mcmc
 from kde_ebm import plotting
 from kde_ebm import datasets
-from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR
+from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR
 from evaluation import evaluate_sequence
 
 
@@ -21,16 +21,19 @@ def main():
     # bmname.
 
     # get dataset
-    filename = "synthetic_1200_100_ebm_0"
+    filename = "synthetic_100_5_dpm_0"
     # filename = "synthetic_120_10_ebm"
-    obs_path = os.path.join(SIMULATED_OBSERVATIONS_DIR, filename + "_kde-ebm.csv")
+    obs_path = os.path.join(SIMULATED_OBS_TRAIN_DIR, filename + "_kde-ebm.csv")
 
     X, y, bmname, cname = datasets.load_synthetic(obs_path)
 
     # get ground truth ordering
-    label_path = os.path.join(SIMULATED_LABELS_DIR, filename + "_seq.json")
+    label_path = os.path.join(SIMULATED_LABEL_TRAIN_DIR, filename + "_seq.json")
     with open(label_path, 'r') as f:
         gt_order = json.load(f)
+
+    # flatten sequence
+    gt_order = np.array(gt_order).squeeze(1)
 
     time0 = time.time()
 
@@ -74,7 +77,6 @@ def main():
 
     # compute kendall-tau distance between ml order and gt order
     print(f"Kendall's tau between ground truth and ML order: {evaluate_sequence(gt_order, ml_order.ordering)}")
-    # todo: np.argsort both
 
 
 if __name__ == '__main__':

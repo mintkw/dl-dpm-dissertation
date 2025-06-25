@@ -2,7 +2,7 @@ import csv
 import os
 import pandas as pd
 import numpy as np
-from config import SIMULATED_OBSERVATIONS_DIR, SIMULATED_LABELS_DIR
+from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR
 
 
 def prepare_csv_for_kde_ebm(csv_path, suffix):
@@ -36,7 +36,7 @@ def prepare_csv_for_kde_ebm(csv_path, suffix):
 if __name__ == "__main__":
     # Converts all dataset csv files in the synthetic data directory that do not have the prepared data suffix
     suffix = "kde-ebm"
-    simulated_obs_dir = os.path.join("..", SIMULATED_OBSERVATIONS_DIR)
+    simulated_obs_dir = os.path.join("..", SIMULATED_OBS_DIR)
 
     for filename in os.listdir(simulated_obs_dir):
         split_filename = os.path.splitext(filename)
