@@ -79,7 +79,7 @@ def sigmoid(x, a, b, c):
 
 
 def inverse_sigmoid(y, a, b, c):
-    return -torch.log((a - y) / b) / b + c
+    return -torch.log((a - y) / y) / b + c
 
 
 def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
@@ -239,14 +239,14 @@ if __name__ == "__main__":
     # 2. Infer sequence by fitting biomarker curves
     # Fit biomarker curves
     sigmoid_params_train, fig_train, ax_train = fit_biomarker_curves(train_loader, ae, n_epochs=100, device=DEVICE, lr=0.001)
-    fig_train.show()
     label = fig_train._suptitle.get_text()
     fig_train.suptitle(label + " on training set")
+    fig_train.show()
 
     sigmoid_params_val, fig_val, ax_val = fit_biomarker_curves(val_loader, ae, n_epochs=100, device=DEVICE, lr=0.001)
-    fig_val.show()
     label = fig_val._suptitle.get_text()
     fig_val.suptitle(label + " on validation set")
+    fig_val.show()
 
     # Infer sequence from the fitted curves
     curve_fitting_seq_train = infer_seq_from_biomarker_curves(sigmoid_params_train)
