@@ -49,10 +49,10 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
             torch.save(net.dec.state_dict(), dec_path)
             epochs_without_improvement = 0
 
-            # Terminate training early if reconstruction improvement is below minimum accepted improvement
-            if reconstruction_improvement < minimum_improvement:
-                print(f"Ending training early as observed improvement is now under {minimum_improvement}")
-                return
+            # # Terminate training early if reconstruction improvement is below minimum accepted improvement
+            # if reconstruction_improvement < minimum_improvement:
+            #     print(f"Ending training early as observed improvement is now under {minimum_improvement}")
+            #     return
         else:
             # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
             epochs_without_improvement += 1
@@ -69,7 +69,7 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
 
 if __name__ == "__main__":
     # dataset_name = "synthetic_100_5_ebm_0"
-    dataset_name = "synthetic_120_10_dpm_0"
+    dataset_name = "synthetic_120_10_ebm_dir"
 
     train_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)

@@ -11,14 +11,14 @@ if __name__ == "__main__":
     # print("Seed set to", seed)
 
     # define a common configuration to use for both models.
-    n_biomarkers = 5
-    n_mci = 80
+    n_biomarkers = 10
+    n_mci = 100
     n_controls = 10
     n_patients = 10
-    means_normal = np.array([0, 0, 1, 1, 2])
-    means_abnormal = np.array([1, 1, 2, 3, 0])
-    # means_normal = np.zeros(n_biomarkers)
-    # means_abnormal = np.ones(n_biomarkers)
+    # means_normal = np.array([0, 0, 1, 1, 2])
+    # means_abnormal = np.array([1, 1, 2, 3, 0])
+    means_normal = np.zeros(n_biomarkers)
+    means_abnormal = np.concatenate([np.ones(5), np.ones(5) + 1])
     sds_normal = 0.05 * np.ones(n_biomarkers)
     sds_abnormal = 0.05 * np.ones(n_biomarkers)
     # sds_normal = np.concatenate([0.05 * np.ones(15), 0.1 * np.ones(15)])

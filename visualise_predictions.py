@@ -5,11 +5,20 @@ import os
 from config import DEVICE, PLOT_DIR, MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 import ae_stager
+import vae_stager
 import plotting
 
 
 if __name__ == "__main__":
-    dataset_name = "synthetic_120_10_dpm_0"
+    # USER CONFIGURATION --------------------
+    dataset_name = "synthetic_120_10_ebm_scale"
+    # dataset_name = "synthetic_100_5_ebm_0"
+
+    model_type = "vae"  # only vae or ae supported currently
+    if model_type not in ["vae", "ae"]:
+        print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
+        exit()
+    # ---------------------------------------
 
     # Load training and validation sets
     train_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
@@ -20,36 +29,51 @@ if __name__ == "__main__":
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
 
-    # Load model
-    ae_enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    ae_dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
+    # Instantiate models
+    enc = None
+    dec = None
 
-    ae = ae_stager.AE(enc=ae_enc, dec=ae_dec)
+    if model_type == "vae":
+        enc = vae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
+        dec = vae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
 
-    enc_model_path = os.path.join(MODEL_DIR, "ae", "enc_" + dataset_name + ".pth")
-    dec_model_path = os.path.join(MODEL_DIR, "ae", "dec_" + dataset_name + ".pth")
+        net = vae_stager.VAE(enc=enc, dec=dec)
 
-    ae_enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
-    ae_dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
+    elif model_type == "ae":
+        enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
+        dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
+
+        net = ae_stager.AE(enc=enc, dec=dec)
+
+    if enc is None or dec is None:
+        print("Arguments not validated properly - please fix")
+        exit()
+
+    # Load a model fitted to the particular dataset
+    enc_model_path = os.path.join(MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
+    dec_model_path = os.path.join(MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
+
+    enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
+    dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
 
     # Plot biomarker levels against predicted stages
-    fig, ax = plotting.staged_biomarker_plots(train_loader, ae, DEVICE)
-    label = fig._suptitle.get_text()
-    fig.suptitle(label + " on training set")
-    fig.show()
-
-    fig, ax = plotting.staged_biomarker_plots(val_loader, ae, DEVICE)
-    label = fig._suptitle.get_text()
-    fig.suptitle(label + " on validation set")
-    fig.show()
+    # fig, ax = plotting.staged_biomarker_plots(train_loader, net, DEVICE)
+    # label = fig._suptitle.get_text()
+    # fig.suptitle(label + " on training set")
+    # fig.show()
+    #
+    # fig, ax = plotting.staged_biomarker_plots(val_loader, net, DEVICE)
+    # label = fig._suptitle.get_text()
+    # fig.suptitle(label + " on validation set")
+    # fig.show()
 
     # Plot predicted stages against true stages
-    fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, ae, DEVICE)
+    fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, net, DEVICE)
     label = fig._suptitle.get_text()
     fig.suptitle(label + " on training set")
     fig.show()
 
-    fig, ax = plotting.predicted_stage_comparison(val_loader, num_biomarkers, ae, DEVICE)
+    fig, ax = plotting.predicted_stage_comparison(val_loader, num_biomarkers, net, DEVICE)
     label = fig._suptitle.get_text()
     fig.suptitle(label + " on validation set")
     fig.show()

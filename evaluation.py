@@ -41,6 +41,7 @@ def evaluate_autoencoder(dataloader, net, device):
     reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
 
     # latent can scale in an opposite direction to stages, so try both directions and take the min error
+    # todo: this is a silly workaround atm
     mse_stage_error = torch.min(torch.mean((predictions - gt_stages) ** 2),
                                 torch.mean((predictions - 1 + gt_stages) ** 2))
 
