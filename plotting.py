@@ -5,17 +5,19 @@ import numpy as np
 
 from config import DEVICE, PLOT_DIR, MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-import ae_stager
+import ae_stager, vae_stager
 
 
 def staged_biomarker_plots(dataloader, net, device):
+    # plots only the first 10 biomarkers.
+
     X = []
     preds = []
     # labels = []
 
     # Get number of biomarkers
     example, _ = next(iter(dataloader))
-    num_biomarkers = example.shape[1]
+    num_biomarkers_to_plot = min(15, example.shape[1])
 
     # Get data and corresponding predictions
     with torch.no_grad():
@@ -28,26 +30,18 @@ def staged_biomarker_plots(dataloader, net, device):
     preds = torch.concatenate(preds).squeeze().cpu()
     # labels = torch.concatenate(labels).squeeze()
 
-    # # otherwise, plot all separately
-    # for biomarker in range(num_biomarkers):
-    #     plt.scatter(preds, X[:, biomarker])
-    #     plt.xlabel("Predicted stage")
-    #     plt.ylabel("Biomarker measurement")
-    #     plt.title(f"Biomarker {biomarker}")
-    #     plt.show()
-
     # Plot each biomarker on separate axes of the same figure
-    n_x = np.round(np.sqrt(num_biomarkers)).astype(int)
-    n_y = np.ceil(np.sqrt(num_biomarkers)).astype(int)
+    n_x = np.round(np.sqrt(num_biomarkers_to_plot)).astype(int)
+    n_y = np.ceil(np.sqrt(num_biomarkers_to_plot)).astype(int)
     fig, ax = plt.subplots(n_y, n_x, figsize=(9, 9))
     fig.suptitle("Biomarker measurement against predicted stage")
 
-    for i in range(num_biomarkers):
+    for i in range(num_biomarkers_to_plot):
         ax.flat[i].scatter(preds, X[:, i])
         ax.flat[i].set_title(f"Biomarker {i}")
 
     # Delete unused axes
-    for j in range(num_biomarkers, n_x*n_y):
+    for j in range(num_biomarkers_to_plot, n_x*n_y):
         fig.delaxes(ax.flat[j])
     fig.tight_layout()
 
@@ -74,3 +68,56 @@ def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
     ax.set_ylabel("Prediction")
 
     return fig, ax
+
+
+def predicted_biomarker_trajectories(num_biomarkers, net, device):
+    # net: must be a VAE or AE object.
+
+    # Given an autoencoder, plot the (expected) biomarker level against pseudo-time as output by the decoder.
+    # Plots the first 10 biomarkers.
+    num_biomarkers_to_plot = min(15, num_biomarkers)
+
+    t = torch.linspace(0, 1, 100).to(device)
+
+    # automatically handle whether the net is a vae or ae.
+    with torch.no_grad():
+        if type(net) == vae_stager.VAE:
+            output = net.dec(t.unsqueeze(1))
+            preds = output.mean
+            sigma = output.variance
+        elif type(net) == ae_stager.AE:
+            preds = net.dec(t.unsqueeze(1))
+            sigma = torch.zeros(preds.shape)
+        else:
+            print("net should be a VAE or AE object")
+            return
+
+    t = t.cpu()
+    preds = preds.cpu()
+    sigma = sigma.cpu()
+
+    # Plot each biomarker on separate axes of the same figure
+    n_x = np.round(np.sqrt(num_biomarkers_to_plot)).astype(int)
+    n_y = np.ceil(np.sqrt(num_biomarkers_to_plot)).astype(int)
+    fig, ax = plt.subplots(n_y, n_x, figsize=(9, 9))
+    fig.suptitle("Predicted biomarker trajectories")
+
+    for i in range(num_biomarkers_to_plot):
+        ax.flat[i].scatter(t, preds[:, i].cpu())
+        ax.flat[i].set_title(f"Biomarker {i}")
+
+        ax.flat[i].fill_between(
+            t,
+            preds[:, i] - np.sqrt(sigma[:, i]),
+            preds[:, i] + np.sqrt(sigma[:, i]),
+            alpha=0.5,
+            label=r"standard deviation",
+        )
+
+    # Delete unused axes
+    for j in range(num_biomarkers_to_plot, n_x * n_y):
+        fig.delaxes(ax.flat[j])
+    fig.tight_layout()
+
+    return fig, ax
+

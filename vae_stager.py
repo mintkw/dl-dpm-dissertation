@@ -71,16 +71,18 @@ def compute_elbo(vae, X, device):
     epsilon = dist.Normal(0, 1).sample(q_z.mean.shape).to(device)  # not sure if this is right lol
     z = q_z.mean + epsilon * torch.sqrt(q_z.variance)
 
-    # log prior : log p(z_i), chosen to be a standard multivariate gaussian
-    log_prior = dist.Normal(0, 1).log_prob(z).sum(-1)
+    # KL divergence between posterior approximation and prior, where the prior is a standard normal
+    prior_mean = torch.zeros(1).to(device) + 0.5
+    prior_variance = torch.ones(1).to(device)
+    kl_div = 0.5 * (torch.log(prior_variance) - torch.log(q_z.variance) +
+                    (q_z.variance + (q_z.mean - prior_mean) ** 2) / q_z.variance - 1)
+    kl_div = kl_div.squeeze(-1)
 
-    # log posterior : log p(x_i | z_i)
-    log_posterior = vae.dec(z).log_prob(X).sum(-1).sum(-1).sum(-1)
+    # negative expected reconstruction error
+    posterior = vae.dec(z)
+    expected_p_x = posterior.log_prob(X).sum(-1)
 
-    # log q(z_i | x_i)
-    log_qz = q_z.log_prob(z).sum(-1)
-
-    return log_prior + log_posterior - log_qz
+    return -kl_div + expected_p_x
 
 
 # if __name__ == "__main__":

@@ -119,7 +119,7 @@ def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
             epochs_without_improvement = 0
 
             # Also exit early if loss improvement falls below a threshold
-            if prev_loss - overall_loss < 1e-5:
+            if prev_loss - overall_loss < 1e-4:
                 print("Stopping curve-fitting early due to small improvements")
                 break
 
@@ -133,10 +133,10 @@ def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
     # plot fitted curves on top of scatter plots
     fig, ax = plotting.staged_biomarker_plots(dataloader, net, device)
     t = np.linspace(0, 1, 1000)
-    for i in range(num_biomarkers):
+    for i in range(min(num_biomarkers, len(ax.flat))):
         y = sigmoid(torch.tensor(t, device=device), sigmoid_params[i][0], sigmoid_params[i][1], sigmoid_params[i][2], sigmoid_params[i][3])
         y = y.cpu().detach().numpy()
-        ax.flat[i].plot(t, y)
+        ax.flat[i].plot(t, y, color="red")
 
     return sigmoid_params, fig, ax
 

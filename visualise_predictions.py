@@ -11,8 +11,8 @@ import plotting
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    dataset_name = "synthetic_120_10_ebm_scale"
-    # dataset_name = "synthetic_100_5_ebm_0"
+    dataset_name = "synthetic_120_10_dpm_same"
+    # dataset_name = "synthetic_1200_50_dpm_0"
 
     model_type = "vae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
@@ -57,15 +57,15 @@ if __name__ == "__main__":
     dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
 
     # Plot biomarker levels against predicted stages
-    # fig, ax = plotting.staged_biomarker_plots(train_loader, net, DEVICE)
-    # label = fig._suptitle.get_text()
-    # fig.suptitle(label + " on training set")
-    # fig.show()
-    #
-    # fig, ax = plotting.staged_biomarker_plots(val_loader, net, DEVICE)
-    # label = fig._suptitle.get_text()
-    # fig.suptitle(label + " on validation set")
-    # fig.show()
+    fig, ax = plotting.staged_biomarker_plots(train_loader, net, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on training set")
+    fig.show()
+
+    fig, ax = plotting.staged_biomarker_plots(val_loader, net, DEVICE)
+    label = fig._suptitle.get_text()
+    fig.suptitle(label + " on validation set")
+    fig.show()
 
     # Plot predicted stages against true stages
     fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, net, DEVICE)
@@ -76,6 +76,10 @@ if __name__ == "__main__":
     fig, ax = plotting.predicted_stage_comparison(val_loader, num_biomarkers, net, DEVICE)
     label = fig._suptitle.get_text()
     fig.suptitle(label + " on validation set")
+    fig.show()
+
+    # Plot predicted biomarker trajectories
+    fig, ax = plotting.predicted_biomarker_trajectories(num_biomarkers, net, DEVICE)
     fig.show()
 
     plt.show()
