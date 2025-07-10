@@ -7,19 +7,36 @@ import os
 import pandas as pd
 import json
 
-from config import SIMULATED_LABEL_DIR, SIMULATED_OBS_DIR
+from config import DEVICE
 
 
 class SyntheticDatasetVec(Dataset):
-    def __init__(self, dataset_name, obs_directory, label_directory):
-        self.dataset_name = dataset_name
-        self.obs_filepath = os.path.join(obs_directory, dataset_name + ".csv")
-        self.label_filepath = os.path.join(label_directory, dataset_name + '_stages.json')
+    def __init__(self, dataset_names, obs_directory, label_directory):
+        """
+        Args:
+            dataset_names (str or list[str]): A list of dataset names. Expects datasets to have the same dimensions.
+            obs_directory: Path to directory containing observation data
+            label_directory: Path to directory containing label data
+        """
+        if type(dataset_names) is not list:
+            dataset_names = [dataset_names]
 
-        self.obs = torch.tensor(pd.read_csv(self.obs_filepath).values, dtype=torch.float)[:, :-3]  # last 3 columns are CN, MCI, AD
-        with open(self.label_filepath, 'r') as f:
-            self.labels = json.load(f)
+        self.dataset_names = dataset_names
 
+        self.obs = []
+        self.labels = []
+        for dataset_name in dataset_names:
+            obs_filepath = os.path.join(obs_directory, dataset_name + ".csv")
+            label_filepath = os.path.join(label_directory, dataset_name + '_stages.json')
+
+            # last 3 columns are CN, MCI, AD, so remove those
+            self.obs.append(torch.tensor(pd.read_csv(obs_filepath).values, dtype=torch.float)[:, :-3])
+
+            with open(label_filepath, 'r') as f:
+                self.labels.append(torch.tensor(json.load(f)))
+
+        self.obs = torch.concatenate(self.obs, dim=0).to(DEVICE)
+        self.labels = torch.concatenate(self.labels, dim=0).to(DEVICE)
 
     def __len__(self):
         return len(self.obs)

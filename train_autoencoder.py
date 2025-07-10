@@ -4,27 +4,27 @@ import torch
 import itertools
 from tqdm import tqdm
 
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 
 from models import ae_stager, vae_stager
 
 
-def run_training(n_epochs, net, dataset_name, train_loader, optimiser, criterion, model_name, device):
+def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, model_type, device):
     dataset_size = len(train_loader.dataset)
-    model_dir = os.path.join(SAVED_MODEL_DIR, model_name)
+    model_dir = os.path.join(SAVED_MODEL_DIR, model_type)
     os.makedirs(model_dir, exist_ok=True)
 
-    enc_path = os.path.join(model_dir, "enc_" + dataset_name + ".pth")
-    dec_path = os.path.join(model_dir, "dec_" + dataset_name + ".pth")
+    enc_path = os.path.join(model_dir, "enc_" + model_name + ".pth")
+    dec_path = os.path.join(model_dir, "dec_" + model_name + ".pth")
 
     epochs_without_improvement = 0
     best_reconstruction_error = float('inf')
     epoch_patience = 20
     minimum_improvement = 1e-4  # Stop training if improvement falls below this
 
-    for epoch in tqdm(range(n_epochs), desc=f"Training {model_name}"):
+    for epoch in tqdm(range(n_epochs), desc=f"Training {model_type}"):
         train_loss = 0.0
         for (X, _) in train_loader:
             X = X.to(device)
@@ -56,6 +56,9 @@ def run_training(n_epochs, net, dataset_name, train_loader, optimiser, criterion
         mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
 
         if reconstruction_error < best_reconstruction_error:
+            # Compute the correct latent direction, but only if the current model is better than the preceding
+            net.calculate_latent_direction(train_loader)
+
             reconstruction_improvement = best_reconstruction_error - reconstruction_error
             best_reconstruction_error = reconstruction_error
             torch.save(net.enc.state_dict(), enc_path)
@@ -81,13 +84,14 @@ def run_training(n_epochs, net, dataset_name, train_loader, optimiser, criterion
 
 
 if __name__ == "__main__":
-    dataset_name = "synthetic_60_5_0"
+    dataset_names = "synthetic_120_10_0"
+    model_name = "synthetic_120_10_0"
 
-    train_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
-    # val_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
-    # val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
+    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
@@ -105,12 +109,20 @@ if __name__ == "__main__":
     opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_name="vae", device=DEVICE)
+    run_training(n_epochs, vae, model_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae", device=DEVICE)
 
-    # Evaluate
-    staging_mse, reconstruction_mse = evaluate_autoencoder(train_loader, vae, DEVICE)
-    print("Staging MSE of trained VAE:", staging_mse)
-    print("Reconstruction MSE of trained VAE:", reconstruction_mse)
+    # Evaluate on the final models saved during training
+    vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + model_name + ".pth")
+    vae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "dec_" + model_name + ".pth")
+
+    vae_enc.load_state_dict(torch.load(vae_enc_model_path, map_location=DEVICE))
+    vae_dec.load_state_dict(torch.load(vae_dec_model_path, map_location=DEVICE))
+
+    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, vae, DEVICE)
+    reconstruction_mse = reconstruction_mse.cpu()
+
+    print("Staging MSE of trained VAE on validation set:", staging_mse)
+    print("Reconstruction MSE of trained VAE on validation set:", reconstruction_mse)
 
     # ---------- Train AE -----------
     ae_enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
@@ -121,9 +133,17 @@ if __name__ == "__main__":
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_name="ae", device=DEVICE)
+    run_training(n_epochs, ae, dataset_names, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
 
-    # Evaluate
-    staging_mse, reconstruction_mse = evaluate_autoencoder(train_loader, ae, DEVICE)
-    print("Staging MSE of trained AE:", staging_mse)
-    print("Reconstruction MSE of trained AE:", reconstruction_mse)
+    # Evaluate on the final models saved during training
+    ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + model_name + ".pth")
+    ae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "dec_" + model_name + ".pth")
+
+    ae_enc.load_state_dict(torch.load(ae_enc_model_path, map_location=DEVICE))
+    ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
+
+    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, ae, DEVICE)
+    reconstruction_mse = reconstruction_mse.cpu()
+
+    print("Staging MSE of trained AE on validation set:", staging_mse)
+    print("Reconstruction MSE of trained AE on validation set:", reconstruction_mse)

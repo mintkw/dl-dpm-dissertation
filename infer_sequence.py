@@ -14,7 +14,8 @@ import stages_to_sequence
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
     # dataset_name = "synthetic_120_10_dpm_same"
-    dataset_name = "synthetic_1200_50_dpm_0"
+    dataset_names = "synthetic_120_10_1"
+    model_name = "synthetic_120_10_multi"
 
     model_type = "ae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
@@ -23,16 +24,16 @@ if __name__ == "__main__":
     # ---------------------------------------
 
     # Load datasets
-    train_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    train_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
-    val_dataset = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
 
     # Read in ground truth sequence - note that the val and train sets share one sequence
-    seq_label_file = os.path.join(SIMULATED_LABEL_TRAIN_DIR, dataset_name + "_seq.json")
+    seq_label_file = os.path.join(SIMULATED_LABEL_TRAIN_DIR, dataset_names + "_seq.json")
     with open(seq_label_file, 'r') as f:
         seq_gt = json.load(f)
 
@@ -62,8 +63,8 @@ if __name__ == "__main__":
         exit()
 
     # Load a model fitted to the particular dataset
-    enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
-    dec_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
+    enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + model_name + ".pth")
+    dec_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "dec_" + model_name + ".pth")
 
     enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
     dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))

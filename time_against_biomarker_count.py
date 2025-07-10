@@ -42,10 +42,10 @@ if __name__ == "__main__":
             n_biomarkers = n_biomarkers_all[i]
             dataset_name = dataset_names[i]
 
-            train_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+            train_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                             label_directory=SIMULATED_LABEL_TRAIN_DIR)
             train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
-            val_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR,
+            val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR,
                                             label_directory=SIMULATED_LABEL_VAL_DIR)
             val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
             # Run training loop
             start_time = time.time()
-            run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_name="vae",
+            run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae",
                          device=DEVICE)
             time_taken = time.time() - start_time  # in seconds
             times_taken_to_fit_vae.append(time_taken)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
             # Run training loop
             start_time = time.time()
-            run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_name="ae",
+            run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae",
                          device=DEVICE)
             time_taken = time.time() - start_time  # in seconds
             times_taken_to_fit_ae.append(time_taken)

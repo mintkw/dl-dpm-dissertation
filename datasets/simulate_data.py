@@ -22,7 +22,6 @@ def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_se
         # biomarker_labels = [chr(ord('A') + i) for i in range(n_biomarkers)]
         biomarker_labels = [str(i) for i in range(n_biomarkers)]
 
-    cwd = os.getcwd()
     os.chdir(ROOT_DIR)
     os.makedirs(SIMULATED_OBS_TRAIN_DIR, exist_ok=True)
     os.makedirs(SIMULATED_OBS_VAL_DIR, exist_ok=True)
@@ -93,11 +92,11 @@ if __name__ == "__main__":
     # print("Seed set to", seed)
 
     # Define a common configuration to use for both saved_models.
-    n_biomarkers = 50
-    n_mci = 1000
-    n_controls = 100
-    n_patients = 100
+    n_biomarkers = 10
+    n_mci = 100
+    n_controls = 10
+    n_patients = 10
 
-    generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=n_mci, n_controls=n_controls, n_patients=n_patients)
+    generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=n_mci, n_controls=n_controls, n_patients=n_patients, num_sets=2)
 
 

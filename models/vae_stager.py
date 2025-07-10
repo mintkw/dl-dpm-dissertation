@@ -5,6 +5,7 @@ import torch.distributions as dist
 import torch.nn as nn
 import itertools
 from tqdm import tqdm
+from scipy import stats
 
 from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, SAVED_MODEL_DIR
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
@@ -23,6 +24,8 @@ class Encoder(nn.Module):
 
         self.fc_mu = nn.Linear(16, d_latent)
         self.fc_sigma = nn.Linear(16, d_latent)
+
+        self.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False))  # 1 for ascending latent (0 is control and 1 is patient), 0 for descending
 
     def forward(self, X):
         h = self.net(X)
@@ -57,10 +60,29 @@ class VAE:
         self.dec = dec
 
     def encode(self, X):
-        return self.enc(X).mean
+        return self.enc.latent_dir * self.enc(X).mean + (1 - self.enc.latent_dir) * (1 - self.enc(X).mean)
 
     def reconstruct(self, X):
         return self.dec(self.enc(X).sample()).sample()
+
+    def calculate_latent_direction(self, dataloader):
+        batch_size = next(iter(dataloader))[0].shape[0]
+        mean_correlation = 0.  # mean correlation across all variables and batches
+        dataset_size = len(dataloader.dataset)
+
+        for X, _ in dataloader:
+            uncorrected_latents = self.enc(X).sample()
+
+            # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+            data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
+
+            correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
+            mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
+
+        if mean_correlation > 0:
+            self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
+        else:
+            self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
 
 
 def compute_elbo(vae, X, device, beta=1):
@@ -104,72 +126,4 @@ def vae_criterion(X, vae, device):
     # The loss is the sum of the negative per-datapoint ELBO
     loss = -elbos.sum()
 
-    # # EXPERIMENT -------------------------------------------
-    # # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-    # latents = vae.encode(X)
-    # data_matrix = torch.concat([X, latents], dim=1)  # columns as variables and rows as observations
-    #
-    # correlation_matrix = stats.spearmanr(data_matrix.detach().cpu())
-    # mean_correlation = correlation_matrix[-1][:-1].mean()
-    #
-    # # # Since we take the mean again outside the loop, we scale up by batch size
-    # # mean_correlation *= X.shape[0]
-    #
-    # loss -= mean_correlation
-    # # ------------------------------------------------------
-
     return loss
-
-
-# if __name__ == "__main__":
-#     dataset_name = "synthetic_120_10_dpm_0"
-#     # VAE trying to infer stage with latent space
-#     train_set = SyntheticDatasetVec(dataset_name=dataset_name)
-#     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
-#
-#     example_x, _ = next(iter(train_dataloader))
-#     num_biomarkers = example_x.shape[1]
-#
-#     # Define network
-#     enc = Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-#     dec = Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
-#
-#     vae = VAE(enc=enc, dec=dec)
-#
-#     # Define optimiser
-#     opt_vae = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()), lr=0.001)
-#
-#     # Run training loop
-#     n_epochs = 50
-#     train_vae(n_epochs, vae, train_dataloader, train_set, opt_vae, dataset_name, DEVICE)
-#
-#     # Evaluate by computing MSE error
-#     print("Mean squared error:", evaluate_autoencoder(train_dataloader, vae, DEVICE)[0])
-
-    # # VAE trying to infer seq with latent space
-    # train_set = SyntheticDatasetMat(labels_dir=SIMULATED_LABELS_DIR, obs_dir=SIMULATED_OBSERVATIONS_DIR)
-    # train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
-    # num_biomarkers = 10
-    # d_obs = 1200
-    #
-    # enc = Encoder(d_in=d_obs, d_latent=num_biomarkers).to(DEVICE)
-    # dec = Decoder(d_out=d_obs, d_latent=num_biomarkers).to(DEVICE)
-    #
-    # opt_vae = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()))
-    #
-    # # run training loop
-    # n_epochs = 100
-    # run_training(n_epochs, enc, dec, train_dataloader, train_set, opt_vae, DEVICE)
-    #
-    # # print label and latent of the training set after training
-    # with torch.no_grad():
-    #     for X, label in train_dataloader:
-    #         X = X.to(DEVICE)
-    #         X = X.reshape(-1, d_obs)
-    #         print("ground truths: ", label)
-    #
-    #         latents = enc(X).sample()
-    #         print("latents: ", latents)
-    #
-    #         # see if the latents correspond in some way to the ground truth orderings?
-    #         print("latent ordering: ", torch.argsort(latents))

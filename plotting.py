@@ -6,11 +6,10 @@ from models import ae_stager, vae_stager
 
 
 def staged_biomarker_plots(dataloader, net, device):
-    # plots only the first 10 biomarkers.
+    # plots only the first 15 biomarkers.
 
     X = []
     preds = []
-    # labels = []
 
     # Get number of biomarkers
     example, _ = next(iter(dataloader))
@@ -19,13 +18,11 @@ def staged_biomarker_plots(dataloader, net, device):
     # Get data and corresponding predictions
     with torch.no_grad():
         for data, label in dataloader:
-            X.append(data)
-            preds.append(net.encode(data.to(device)))
-            # labels.append(label)
+            X.append(data.cpu())
+            preds.append(net.encode(data))
 
     X = torch.concatenate(X).squeeze()
     preds = torch.concatenate(preds).squeeze().cpu()
-    # labels = torch.concatenate(labels).squeeze()
 
     # Plot each biomarker on separate axes of the same figure
     n_x = np.round(np.sqrt(num_biomarkers_to_plot)).astype(int)
@@ -45,6 +42,43 @@ def staged_biomarker_plots(dataloader, net, device):
     return fig, ax
 
 
+def gt_biomarker_plots(dataloader):
+    # plots only the first 15 biomarkers. biomarker level against gt pseudotime.
+
+    X = []
+    labels = []
+
+    # Get number of biomarkers
+    example, _ = next(iter(dataloader))
+    num_biomarkers_to_plot = min(15, example.shape[1])
+
+    # Get data and corresponding predictions
+    with torch.no_grad():
+        for data, label in dataloader:
+            X.append(data.cpu())
+            labels.append(label.cpu())
+
+    X = torch.concatenate(X).squeeze()
+    labels = torch.concatenate(labels).squeeze()
+
+    # Plot each biomarker on separate axes of the same figure
+    n_x = np.round(np.sqrt(num_biomarkers_to_plot)).astype(int)
+    n_y = np.ceil(np.sqrt(num_biomarkers_to_plot)).astype(int)
+    fig, ax = plt.subplots(n_y, n_x, figsize=(9, 9))
+    fig.suptitle("Biomarker measurement against ground truth stage")
+
+    for i in range(num_biomarkers_to_plot):
+        ax.flat[i].scatter(labels, X[:, i])
+        ax.flat[i].set_title(f"Biomarker {i}")
+
+    # Delete unused axes
+    for j in range(num_biomarkers_to_plot, n_x*n_y):
+        fig.delaxes(ax.flat[j])
+    fig.tight_layout()
+
+    return fig, ax
+
+
 def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
     # Plot predicted stage against (normalised) ground truth.
 
@@ -52,8 +86,8 @@ def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
     preds = []
     with torch.no_grad():
         for data, label in dataloader:
-            labels.append(label)
-            preds.append(net.encode(data.to(device)))
+            labels.append(label.cpu())
+            preds.append(net.encode(data))
 
     labels = torch.concatenate(labels).squeeze().cpu() / num_biomarkers
     preds = torch.concatenate(preds).squeeze().cpu()
