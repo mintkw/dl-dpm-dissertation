@@ -1,11 +1,8 @@
 import matplotlib.pyplot as plt
 import torch
-import os
 import numpy as np
 
-from config import DEVICE, PLOT_DIR, MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-import ae_stager, vae_stager
+from models import ae_stager, vae_stager
 
 
 def staged_biomarker_plots(dataloader, net, device):

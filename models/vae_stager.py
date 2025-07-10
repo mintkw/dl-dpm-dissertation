@@ -6,7 +6,7 @@ import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, MODEL_DIR
+from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, SAVED_MODEL_DIR
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
@@ -63,7 +63,7 @@ class VAE:
         return self.dec(self.enc(X).sample()).sample()
 
 
-def compute_elbo(vae, X, device):
+def compute_elbo(vae, X, device, beta=1):
     # q(z | X)
     q_z = vae.enc(X)
 
@@ -78,11 +78,47 @@ def compute_elbo(vae, X, device):
                     (q_z.variance + (q_z.mean - prior_mean) ** 2) / q_z.variance - 1)
     kl_div = kl_div.squeeze(-1)
 
+    # # EXPERIMENT -------------------
+    # # calculate KL divergence from a sample
+    # prior = dist.Normal(0, 1)
+    # kl_div = q_z.log_prob(z) - prior.log_prob(z)
+    # kl_div = kl_div.squeeze(-1)
+    # # -----------------------------
+
     # negative expected reconstruction error
     posterior = vae.dec(z)
     expected_p_x = posterior.log_prob(X).sum(-1)
 
+    # print(kl_div, expected_p_x)
+
+    # EXPERIMENT: BETA VAE -------------------------
+    return -beta * kl_div + expected_p_x
+    # ---------------------------------------------------
+
     return -kl_div + expected_p_x
+
+
+def vae_criterion(X, vae, device):
+    elbos = compute_elbo(vae, X, device)
+
+    # The loss is the sum of the negative per-datapoint ELBO
+    loss = -elbos.sum()
+
+    # # EXPERIMENT -------------------------------------------
+    # # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+    # latents = vae.encode(X)
+    # data_matrix = torch.concat([X, latents], dim=1)  # columns as variables and rows as observations
+    #
+    # correlation_matrix = stats.spearmanr(data_matrix.detach().cpu())
+    # mean_correlation = correlation_matrix[-1][:-1].mean()
+    #
+    # # # Since we take the mean again outside the loop, we scale up by batch size
+    # # mean_correlation *= X.shape[0]
+    #
+    # loss -= mean_correlation
+    # # ------------------------------------------------------
+
+    return loss
 
 
 # if __name__ == "__main__":

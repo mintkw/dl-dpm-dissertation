@@ -2,19 +2,18 @@ import matplotlib.pyplot as plt
 import torch
 import os
 
-from config import DEVICE, PLOT_DIR, MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-import ae_stager
-import vae_stager
+from models import ae_stager, vae_stager
 import plotting
 
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    dataset_name = "synthetic_120_10_dpm_same"
-    # dataset_name = "synthetic_1200_50_dpm_0"
+    # dataset_name = "synthetic_120_10_dpm_same"
+    dataset_name = "synthetic_600_50_0"
 
-    model_type = "vae"  # only vae or ae supported currently
+    model_type = "ae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
@@ -29,7 +28,7 @@ if __name__ == "__main__":
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
 
-    # Instantiate models
+    # Instantiate saved_models
     enc = None
     dec = None
 
@@ -50,8 +49,8 @@ if __name__ == "__main__":
         exit()
 
     # Load a model fitted to the particular dataset
-    enc_model_path = os.path.join(MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
-    dec_model_path = os.path.join(MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
+    enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
+    dec_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
 
     enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
     dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))

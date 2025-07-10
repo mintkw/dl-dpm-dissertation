@@ -17,7 +17,7 @@ def get_prob_mat(X, mixture_models):
     y : array-like, shape(numPatients,)
         Diagnosis labels for each of the patients.
     mixtureModels : array-like, shape(numBiomarkers,)
-        List of fit mixture models for each of the biomarkers.
+        List of fit mixture saved_models for each of the biomarkers.
 
     Returns
     -------

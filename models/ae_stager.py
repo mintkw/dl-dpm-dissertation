@@ -5,7 +5,7 @@ import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import DEVICE, MODEL_DIR
+from config import DEVICE, SAVED_MODEL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 
@@ -51,6 +51,51 @@ class AE:
 
     def reconstruct(self, X):
         return self.dec(self.enc(X))
+
+
+def ae_criterion(X, ae, device):
+    reconstructions = ae.reconstruct(X)
+
+    latents = ae.encode(X)
+
+    ms_error = ((X - reconstructions) ** 2).mean()
+
+    # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+    data_matrix = torch.concat([X, latents], dim=1)  # columns as variables and rows as observations
+
+    # EXPERIMENT ---------------
+    # PEARSON COEFF
+    # correlation_matrix = torch.corrcoef(torch.transpose(data_matrix, 1, 0))
+    # mean_correlation = correlation_matrix[-1][:-1].mean()
+
+    # OR SPEARMAN COEFF
+    # correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
+    # mean_correlation = correlation_matrix[-1][:-1].mean()
+
+    # if np.any(np.isnan(correlation_matrix[-1])):
+    #     print("correlation matrix")
+    #     exit()
+    # if np.isnan(mean_correlation):
+    #     print("mean correlation")
+    #     exit()
+    #
+    # return rms_error - mean_correlation
+    # --------------------------
+
+    # if torch.any(torch.isnan(reconstructions)):
+    #     print("reconstruction")
+    #     exit()
+    # if torch.any(torch.isnan(latents)):
+    #     print("latents")
+    #     exit()
+    # if torch.any(torch.isnan(ms_error)):
+    #     print("ms error")
+    #     exit()
+    # if torch.any(torch.isnan(data_matrix)):
+    #     print("data matrix")
+    #     exit()
+
+    return ms_error
 
 
 # if __name__ == "__main__":

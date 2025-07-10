@@ -4,9 +4,8 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import DEVICE, MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, PLOT_DIR
-import vae_stager
-import ae_stager
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR
+from models import ae_stager, vae_stager
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder, evaluate_sequence
 import stages_to_sequence
@@ -14,9 +13,10 @@ import stages_to_sequence
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    dataset_name = "synthetic_120_10_ebm_dir"
+    # dataset_name = "synthetic_120_10_dpm_same"
+    dataset_name = "synthetic_1200_50_dpm_0"
 
-    model_type = "vae"  # only vae or ae supported currently
+    model_type = "ae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     print("gt sequence:\n", seq_gt)
 
-    # Instantiate models
+    # Instantiate saved_models
     enc = None
     dec = None
 
@@ -62,8 +62,8 @@ if __name__ == "__main__":
         exit()
 
     # Load a model fitted to the particular dataset
-    enc_model_path = os.path.join(MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
-    dec_model_path = os.path.join(MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
+    enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + dataset_name + ".pth")
+    dec_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "dec_" + dataset_name + ".pth")
 
     enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
     dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
@@ -77,25 +77,32 @@ if __name__ == "__main__":
     print("Reconstruction MSE on training set:", reconst_mse_train)
     print("Reconstruction MSE on validation set:", reconst_mse_val)
 
+    # Infer sequence from stage information
+    seq_prediction = stages_to_sequence.stages_to_sequence_direct(num_biomarkers, train_loader, net, DEVICE)
+
+    print("seq estimated directly from predictions:")
+    print(seq_prediction)
+    print("directly-estimated sequence score:", evaluate_sequence(seq_prediction.cpu(), seq_gt))
+
     # Infer sequence by fitting curves to each biomarker against pseudo-time
     # Fit biomarker curves
-    sigmoid_params_train, fig_train, ax_train = stages_to_sequence.fit_biomarker_curves(train_loader, net, n_epochs=500, device=DEVICE, lr=0.01)
-    label = fig_train._suptitle.get_text()
-    fig_train.suptitle(label + " on training set")
-    fig_train.show()
+    # sigmoid_params_train, fig_train, ax_train = stages_to_sequence.fit_biomarker_curves(train_loader, net, n_epochs=500, device=DEVICE, lr=0.01)
+    # label = fig_train._suptitle.get_text()
+    # fig_train.suptitle(label + " on training set")
+    # fig_train.show()
 
     sigmoid_params_val, fig_val, ax_val = stages_to_sequence.fit_biomarker_curves(val_loader, net, n_epochs=500, device=DEVICE, lr=0.01)
     label = fig_val._suptitle.get_text()
     fig_val.suptitle(label + " on validation set")
     fig_val.show()
 
-    # Infer sequence from the fitted curves
-    curve_fitting_seq_train = stages_to_sequence.infer_seq_from_biomarker_curves(sigmoid_params_train)
-    curve_fitting_seq_val = stages_to_sequence.infer_seq_from_biomarker_curves(sigmoid_params_val)
-    print("seq inferred from fitted biomarker curves on training set:")
-    print(curve_fitting_seq_train)
-    print("Curve-fitted sequence score:", evaluate_sequence(curve_fitting_seq_train.cpu(), seq_gt))
+    # # Infer sequence from the fitted curves
+    # curve_fitting_seq_train = stages_to_sequence.infer_seq_from_biomarker_curves(sigmoid_params_train)
+    # print("seq inferred from fitted biomarker curves on training set:")
+    # print(curve_fitting_seq_train)
+    # print("Curve-fitted sequence score:", evaluate_sequence(curve_fitting_seq_train.cpu(), seq_gt))
 
+    curve_fitting_seq_val = stages_to_sequence.infer_seq_from_biomarker_curves(sigmoid_params_val)
     print("seq inferred from fitted biomarker curves on validation set:")
     print(curve_fitting_seq_val)
     print("Curve-fitted sequence score:", evaluate_sequence(curve_fitting_seq_val.cpu(), seq_gt))

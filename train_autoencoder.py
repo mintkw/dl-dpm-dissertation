@@ -1,29 +1,27 @@
 import os
 
 import torch
-import torch.distributions as dist
-import torch.nn as nn
 import itertools
 from tqdm import tqdm
 
-from config import DEVICE, MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 
-import vae_stager
-import ae_stager
+from models import ae_stager, vae_stager
 
 
-def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion, model_name, device):
-    model_dir = os.path.join(MODEL_DIR, model_name)
+def run_training(n_epochs, net, dataset_name, train_loader, optimiser, criterion, model_name, device):
+    dataset_size = len(train_loader.dataset)
+    model_dir = os.path.join(SAVED_MODEL_DIR, model_name)
     os.makedirs(model_dir, exist_ok=True)
 
     enc_path = os.path.join(model_dir, "enc_" + dataset_name + ".pth")
     dec_path = os.path.join(model_dir, "dec_" + dataset_name + ".pth")
 
     epochs_without_improvement = 0
-    best_loss = float('inf')
-    epoch_patience = 10
+    best_reconstruction_error = float('inf')
+    epoch_patience = 20
     minimum_improvement = 1e-4  # Stop training if improvement falls below this
 
     for epoch in tqdm(range(n_epochs), desc=f"Training {model_name}"):
@@ -32,35 +30,49 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
             X = X.to(device)
             optimiser.zero_grad()
 
-            # The loss is the sum of the negative per-datapoint ELBO
             loss = criterion(X, net, device)
+
+            # if torch.isnan(torch.tensor(loss)):
+            #     print(loss)
+            # if torch.any(torch.isnan(X)):
+            #     print(X)
+
             loss.backward()
+
+            # for param in net.enc.parameters():
+            #     if torch.any(torch.isnan(param.grad)):
+            #         print("gradient:")
+            #         exit()
+
             optimiser.step()
             train_loss += loss.item() * X.shape[0] / dataset_size
+
+            # for param in net.enc.parameters():
+            #     if torch.any(torch.isnan(param)):
+            #         print("parameter:")
+            #         exit()
 
         # compute error between latents and stages - just to track progress
         mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
 
-        if train_loss < best_loss:
-            # Save the model with the current lowest loss
+        if reconstruction_error < best_reconstruction_error:
+            reconstruction_improvement = best_reconstruction_error - reconstruction_error
+            best_reconstruction_error = reconstruction_error
             torch.save(net.enc.state_dict(), enc_path)
             torch.save(net.dec.state_dict(), dec_path)
             epochs_without_improvement = 0
 
             # Terminate training early if reconstruction improvement is below minimum accepted improvement
-            if best_loss - train_loss < minimum_improvement:
-                print(f"Ending training early as observed loss decrease is now under {minimum_improvement}")
+            if reconstruction_improvement < minimum_improvement:
+                print(f"Ending training early as observed improvement is now under {minimum_improvement}")
                 return
-
-            best_loss = train_loss
-
         else:
             # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
             epochs_without_improvement += 1
 
             if epochs_without_improvement >= epoch_patience:
                 print(
-                    f"Ending training early as no decrease in loss observed in {epoch_patience} epochs")
+                    f"Ending training early as no decrease in reconstruction error observed in {epoch_patience} epochs")
                 return
 
         if epoch % 10 == 0:
@@ -69,13 +81,13 @@ def run_training(n_epochs, net, dataset_size, train_loader, optimiser, criterion
 
 
 if __name__ == "__main__":
-    dataset_name = "synthetic_120_10_dpm_same"
+    dataset_name = "synthetic_60_5_0"
 
     train_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
     # val_set = SyntheticDatasetVec(dataset_name=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
-    # val_loader = torch.utils.data.DataLoader(val_set, batch_size=4, shuffle=True)
+    # val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
@@ -90,18 +102,10 @@ if __name__ == "__main__":
     vae = vae_stager.VAE(enc=vae_enc, dec=vae_dec)
 
     # Define optimiser
-    opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.0005)
+    opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    def vae_criterion(X, vae, device):
-        elbos = vae_stager.compute_elbo(vae, X, device)
-
-        # The loss is the sum of the negative per-datapoint ELBO
-        loss = -elbos.sum()
-
-        return loss
-
-    run_training(n_epochs, vae, len(train_set), train_loader, opt_vae, vae_criterion, model_name="vae", device=DEVICE)
+    run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_name="vae", device=DEVICE)
 
     # Evaluate
     staging_mse, reconstruction_mse = evaluate_autoencoder(train_loader, vae, DEVICE)
@@ -117,19 +121,7 @@ if __name__ == "__main__":
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    def ae_criterion(X, ae, device):
-        reconstructions = ae.reconstruct(X)
-        latents = ae.encode(X)
-
-        rms_error = torch.sqrt((X - reconstructions) ** 2).sum()
-
-        # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-        correlation_matrix = torch.corrcoef(torch.transpose(torch.concat([X, latents], dim=1), 1, 0))
-        mean_correlation = correlation_matrix[-1][:-1].mean()
-
-        return rms_error - mean_correlation
-
-    run_training(n_epochs, ae, len(train_set), train_loader, opt_ae, ae_criterion, model_name="ae", device=DEVICE)
+    run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_name="ae", device=DEVICE)
 
     # Evaluate
     staging_mse, reconstruction_mse = evaluate_autoencoder(train_loader, ae, DEVICE)

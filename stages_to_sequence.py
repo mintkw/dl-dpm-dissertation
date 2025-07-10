@@ -1,15 +1,8 @@
 import torch
-import os
-import json
 import numpy as np
-import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 import plotting
-from config import DEVICE, MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, PLOT_DIR
-import vae_stager
-import ae_stager
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-from evaluation import evaluate_autoencoder, evaluate_sequence
 
 
 def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
@@ -75,7 +68,7 @@ def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
 
 
 def sigmoid(x, a, b, c, d):
-    return a / (1 + torch.exp(-10 * b * (x - c))) + d
+    return a / (1 + torch.exp(-50 * b * (x - c))) + d
 
 
 def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
@@ -94,7 +87,7 @@ def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
     patience = 5  # number of epochs to wait without improvement
     epochs_without_improvement = 0
 
-    for i in range(n_epochs):
+    for i in tqdm(range(n_epochs), desc=f"Fitting biomarker curves"):
         overall_loss = 0
         for data, _ in dataloader:
             data = data.to(device)
