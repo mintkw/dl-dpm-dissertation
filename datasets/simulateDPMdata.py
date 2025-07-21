@@ -1,6 +1,6 @@
 # Credit to Christopher Parker
 
-def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_res=None, n_controls=0,
+def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, onsets_stages=None, sample_res=None, stage_res=None, n_controls=0,
                     n_patients=0, means_normal=None, means_abnormal=None, sds_normal=None,
                     sds_abnormal=None, biomarker_labels=None, label_points=True, permutation=[],
                     gradients=None, onsets=None, plot=False, plot_hist=False, plot_points=True,
@@ -15,6 +15,7 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_re
         seq (list of lists): if specified, overrides n_biomarkers and onset.
         n_biomarkers (int): number of biomarkers.
         n_mci (int):
+        onsets_stages (np.array): sorted onset times of biomarkers
         sample_res (float?): the sampling resolution (time between MCI subject samples). If specified, overrides n_mci.
         stage_res (float?): the stage temporal 'resolution' (time between the sets of events in each respective stage). If specified, overrides onsets.
         n_controls (int): number of control subjects?
@@ -110,7 +111,7 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_re
             times = np.linspace(start=0, stop=max_time, num=n_mci)
         else:
             # no sample_res provided - sampling MCI randomly in time
-            times = np.random.uniform(low=0,high=1,size=n_mci)
+            times = np.random.uniform(low=0, high=1, size=n_mci)
             
     # Disease progression times of MCI
     # times = np.linspace(start=0, stop=max_time, num=n_mci)
@@ -158,14 +159,15 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, sample_res=None, stage_re
         n_stages = len(seq) + 1 # including stage 0
         onsets = np.array([np.nan for i in range(n_biomarkers)]) # onset of each biomarker
         # Stage onsets (if stage temporal resolution is specified, it determines the stage onsets, else they're determined by equidistant spacing)
-        if stage_res is None:
-            onsets_stages = np.array([i*(max_time/n_stages) for i in range(n_stages)])[1:] # onset time of each (non-zero) stage
-        else:
-            total_time_nonends = (n_stages - 2) * stage_res # time from first to last transition
-            min_time_stage = 0 + (max_time - total_time_nonends)/2
-            max_time_stage = max_time - (max_time - total_time_nonends)/2
-            onsets_stages = np.linspace(min_time_stage, max_time_stage, n_stages-1) # onset time of each (non-zero) stage (equivalently each biomarker)
-        # 
+        if onsets_stages is None:
+            if stage_res is None:
+                onsets_stages = np.array([i*(max_time/n_stages) for i in range(n_stages)])[1:] # onset time of each (non-zero) stage
+            else:
+                total_time_nonends = (n_stages - 2) * stage_res # time from first to last transition
+                min_time_stage = 0 + (max_time - total_time_nonends)/2
+                max_time_stage = max_time - (max_time - total_time_nonends)/2
+                onsets_stages = np.linspace(min_time_stage, max_time_stage, n_stages-1) # onset time of each (non-zero) stage (equivalently each biomarker)
+        #
         # writing onsets based on (non-zero) stage onsets
         for i in range(n_stages-1):
             bioms_stagei = seq[i]

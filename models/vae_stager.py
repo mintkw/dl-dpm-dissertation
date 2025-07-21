@@ -62,6 +62,9 @@ class VAE:
     def encode(self, X):
         return self.enc.latent_dir * self.enc(X).mean + (1 - self.enc.latent_dir) * (1 - self.enc(X).mean)
 
+    def decode(self, X):
+        return self.dec(X).sample()  # or mean...?
+
     def reconstruct(self, X):
         return self.dec(self.enc(X).sample()).sample()
 
@@ -85,7 +88,7 @@ class VAE:
             self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
 
 
-def compute_elbo(vae, X, device, beta=1):
+def compute_elbo(vae, X, device, beta=3):
     # q(z | X)
     q_z = vae.enc(X)
 
@@ -97,8 +100,9 @@ def compute_elbo(vae, X, device, beta=1):
     prior_mean = torch.zeros(1).to(device) + 0.5
     prior_variance = torch.ones(1).to(device)
     kl_div = 0.5 * (torch.log(prior_variance) - torch.log(q_z.variance) +
-                    (q_z.variance + (q_z.mean - prior_mean) ** 2) / q_z.variance - 1)
-    kl_div = kl_div.squeeze(-1)
+                    (q_z.variance + (q_z.mean - prior_mean) ** 2) / prior_variance - 1)
+
+    kl_div = kl_div.sum(-1)  # per-datapoint ELBO is the sum over the per-latent ELBOs
 
     # # EXPERIMENT -------------------
     # # calculate KL divergence from a sample

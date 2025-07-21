@@ -42,6 +42,47 @@ def staged_biomarker_plots(dataloader, net, device):
     return fig, ax
 
 
+def mean_data_against_discretised_stage(dataloader, net, device):
+    # plots only the first few biomarkers.
+
+    # Get number of biomarkers
+    example, _ = next(iter(dataloader))
+    batch_size, n_biomarkers = example.shape
+    num_biomarkers_to_plot = min(10, n_biomarkers)
+
+    X_per_stage = [[] for _ in range(n_biomarkers + 1)]
+
+    # Get data and corresponding predictions
+    with torch.no_grad():
+        for X, label in dataloader:
+            preds = net.encode(X)
+
+            # Translate and group preds into 0, 1, ..., n_biomarkers
+            preds_int = torch.round(preds * n_biomarkers).int()
+
+            # Sort the observation data by predicted stage.
+            for i in range(batch_size):
+                X_per_stage[preds_int[i]].append(X[i].cpu())
+
+    mean_X_per_stage = np.zeros((n_biomarkers + 1, n_biomarkers))
+    for stage in range(n_biomarkers + 1):
+        mean_X_per_stage[stage] = np.array(X_per_stage[stage]).mean(axis=0)
+    mean_X_per_stage = np.array(mean_X_per_stage)
+
+    # Plot mean biomarker against predicted discrete stage on one figure
+    fig, ax = plt.subplots(figsize=(12, 9))
+    fig.suptitle("Mean biomarker level against predicted discretised stage")
+
+    for i in range(num_biomarkers_to_plot):
+        ax.plot(np.arange(n_biomarkers + 1), mean_X_per_stage[:, i], label=f"Biomarker {i}")
+
+    ax.set_xlabel("Stage")
+    ax.set_ylabel("Biomarker level")
+    ax.legend(loc="upper right")
+
+    return fig, ax
+
+
 def gt_biomarker_plots(dataloader):
     # plots only the first 15 biomarkers. biomarker level against gt pseudotime.
 

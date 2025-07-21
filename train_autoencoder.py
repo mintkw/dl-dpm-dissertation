@@ -84,8 +84,9 @@ def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, 
 
 
 if __name__ == "__main__":
-    dataset_names = "synthetic_120_10_0"
-    model_name = "synthetic_120_10_0"
+    num_sets = 10
+    dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
+    model_name = "synthetic_120_10_multi"
 
     train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
@@ -93,8 +94,7 @@ if __name__ == "__main__":
     val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
-    example_x, _ = next(iter(train_loader))
-    num_biomarkers = example_x.shape[1]
+    num_biomarkers = next(iter(train_loader))[0].shape[1]
 
     n_epochs = 1000
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, ae, dataset_names, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
+    run_training(n_epochs, ae, model_name, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
 
     # Evaluate on the final models saved during training
     ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + model_name + ".pth")

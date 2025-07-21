@@ -6,13 +6,13 @@ print("Using device:", DEVICE)
 
 # Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = "data"
-SIMULATED_DATA_DIR = os.path.join(DATA_DIR, "synthetic")
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+SIMULATED_DATA_DIR = os.path.join(ROOT_DIR, DATA_DIR, "synthetic")
 SIMULATED_OBS_DIR = os.path.join(SIMULATED_DATA_DIR, "observations")
 SIMULATED_LABEL_DIR = os.path.join(SIMULATED_DATA_DIR, "labels")
 SIMULATED_OBS_TRAIN_DIR = os.path.join(SIMULATED_OBS_DIR, "train")
 SIMULATED_OBS_VAL_DIR = os.path.join(SIMULATED_OBS_DIR, "val")
 SIMULATED_LABEL_TRAIN_DIR = os.path.join(SIMULATED_LABEL_DIR, "train")
 SIMULATED_LABEL_VAL_DIR = os.path.join(SIMULATED_LABEL_DIR, "val")
-SAVED_MODEL_DIR = "saved_models"
-PLOT_DIR = "plots"
+SAVED_MODEL_DIR = os.path.join(ROOT_DIR, "saved_models")
+PLOT_DIR = os.path.join(ROOT_DIR, "plots")

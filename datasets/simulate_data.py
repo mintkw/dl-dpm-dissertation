@@ -6,7 +6,7 @@ from config import SIMULATED_OBS_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LAB
 
 
 def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, means_normal=None, means_abnormal=None,
-                             sds_normal=None, sds_abnormal=None, biomarker_labels=None):
+                             sds_normal=None, sds_abnormal=None, biomarker_labels=None, onsets_stages=None):
     # Generate and save data for `n_biomarkers` biomarkers with all normal levels of 0 and abnormal levels of 1, by default.
 
     # Default arguments:
@@ -49,7 +49,8 @@ def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_se
                                                                             sds_normal=sds_normal,
                                                                             sds_abnormal=sds_abnormal,
                                                                             plot=False,
-                                                                            biomarker_labels=biomarker_labels)
+                                                                            biomarker_labels=biomarker_labels,
+                                                                            onsets_stages=onsets_stages)
 
             file_name = f"synthetic_{n_mci + n_patients + n_controls}_{n_biomarkers}_{i}"  # without extension
             dpm_df.to_csv(os.path.join(obs_directories[set], file_name + ".csv"), index=False)
@@ -96,7 +97,10 @@ if __name__ == "__main__":
     n_mci = 100
     n_controls = 10
     n_patients = 10
+    num_sets = 10
 
-    generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=n_mci, n_controls=n_controls, n_patients=n_patients, num_sets=2)
+    onsets_stages = np.sort(np.random.rand(n_biomarkers))  # randomly determine
 
+    generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=n_mci, n_controls=n_controls, n_patients=n_patients, num_sets=num_sets,
+                             onsets_stages=onsets_stages)
 

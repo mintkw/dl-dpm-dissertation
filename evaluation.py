@@ -3,6 +3,20 @@ import scipy
 import numpy as np
 
 
+def compute_reconstruction_mse(dataloader, net, device):
+    reconstruction_errors = []
+    with torch.no_grad():
+        for X, label in dataloader:
+            X = X.to(device)
+            reconstruction = net.reconstruct(X)
+            reconstruction_errors.append((reconstruction - X) ** 2)
+
+    reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
+    mean_reconstruction_error = torch.mean(reconstruction_errors)
+
+    return mean_reconstruction_error
+
+
 def evaluate_autoencoder(dataloader, net, device):
     """
 
@@ -10,6 +24,7 @@ def evaluate_autoencoder(dataloader, net, device):
         dataloader:
         net: needs an autoencoder
         device:
+        num_latents: if > 1, evaluates the first dimension
 
     Returns:
 
@@ -29,8 +44,8 @@ def evaluate_autoencoder(dataloader, net, device):
 
             reconstruction_errors.append((reconstruction - X) ** 2)
 
-    # scale predictions
     predictions = torch.concatenate(predictions).squeeze().to(device)
+    # # scale predictions
     # predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
     # predictions = torch.sigmoid(predictions)
 

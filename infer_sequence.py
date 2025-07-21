@@ -13,11 +13,11 @@ import stages_to_sequence
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    # dataset_name = "synthetic_120_10_dpm_same"
+    # dataset_names = [f"synthetic_120_10_{i}" for i in range(2)]
     dataset_names = "synthetic_120_10_1"
-    model_name = "synthetic_120_10_multi"
+    model_name = "synthetic_120_10_0"
 
-    model_type = "ae"  # only vae or ae supported currently
+    model_type = "vae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
@@ -25,9 +25,9 @@ if __name__ == "__main__":
 
     # Load datasets
     train_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
     val_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
     num_biomarkers = example_x.shape[1]
@@ -72,11 +72,12 @@ if __name__ == "__main__":
     # Verify that everything loaded alright by printing mean squared error on training set
     stage_mse_train, reconst_mse_train = evaluate_autoencoder(train_loader, net, DEVICE)
     stage_mse_val, reconst_mse_val = evaluate_autoencoder(val_loader, net, DEVICE)
-    print("Staging MSE on training set:", stage_mse_train)
-    print("Staging MSE on validation set:", stage_mse_val)
-    print()
+
     print("Reconstruction MSE on training set:", reconst_mse_train)
     print("Reconstruction MSE on validation set:", reconst_mse_val)
+    print()
+    print("Staging MSE on training set:", stage_mse_train)
+    print("Staging MSE on validation set:", stage_mse_val)
 
     # Infer sequence from stage information
     seq_prediction = stages_to_sequence.stages_to_sequence_direct(num_biomarkers, train_loader, net, DEVICE)

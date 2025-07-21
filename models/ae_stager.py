@@ -55,6 +55,9 @@ class AE:
     def reconstruct(self, X):
         return self.dec(self.enc(X))
 
+    def decode(self, z):
+        return self.dec(z)
+
     def calculate_latent_direction(self, dataloader):
         batch_size = next(iter(dataloader))[0].shape[0]
         mean_correlation = 0.  # mean correlation across all variables and batches
