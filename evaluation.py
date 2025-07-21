@@ -32,6 +32,7 @@ def evaluate_autoencoder(dataloader, net, device):
     predictions = []
     gt_stages = []
     reconstruction_errors = []
+    n_biomarkers = next(iter(dataloader))[0].shape[1]
     with torch.no_grad():
         for X, label in dataloader:
             gt_stages.append(label)
@@ -39,19 +40,16 @@ def evaluate_autoencoder(dataloader, net, device):
             X = X.to(device)
             raw_preds = net.encode(X)
             predictions.append(raw_preds)
-
             reconstruction = net.reconstruct(X)
-
             reconstruction_errors.append((reconstruction - X) ** 2)
 
     predictions = torch.concatenate(predictions).squeeze().to(device)
-    # # scale predictions
-    # predictions = (predictions - torch.min(predictions)) / (torch.max(predictions) - torch.min(predictions))
-    # predictions = torch.sigmoid(predictions)
 
-    # scale stages
+    # scale predictions with number of biomarkers
+    predictions *= n_biomarkers
+
     gt_stages = torch.concatenate(gt_stages).to(device)
-    gt_stages /= torch.max(gt_stages)
+    # gt_stages /= torch.max(gt_stages)
 
     reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
 

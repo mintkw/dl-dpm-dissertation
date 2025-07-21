@@ -58,24 +58,25 @@ class AE:
     def decode(self, z):
         return self.dec(z)
 
-    def calculate_latent_direction(self, dataloader):
-        batch_size = next(iter(dataloader))[0].shape[0]
-        mean_correlation = 0.  # mean correlation across all variables and batches
-        dataset_size = len(dataloader.dataset)
+    def automatically_set_latent_direction(self, dataloader):
+        with torch.no_grad():
+            batch_size = next(iter(dataloader))[0].shape[0]
+            mean_correlation = 0.  # mean correlation across all variables and batches
+            dataset_size = len(dataloader.dataset)
 
-        for X, _ in dataloader:
-            uncorrected_latents = self.enc(X)
+            for X, _ in dataloader:
+                uncorrected_latents = self.enc(X)
 
-            # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-            data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
+                # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+                data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
 
-            correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
-            mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
+                correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
+                mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
 
-        if mean_correlation > 0:
-            self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
-        else:
-            self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
+            if mean_correlation > 0:
+                self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
+            else:
+                self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
 
 
 def ae_criterion(X, ae, device):

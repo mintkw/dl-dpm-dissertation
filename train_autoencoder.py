@@ -55,32 +55,32 @@ def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, 
         # compute error between latents and stages - just to track progress
         mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
 
-        if reconstruction_error < best_reconstruction_error:
-            # Compute the correct latent direction, but only if the current model is better than the preceding
-            net.calculate_latent_direction(train_loader)
-
-            reconstruction_improvement = best_reconstruction_error - reconstruction_error
+        if best_reconstruction_error - reconstruction_error >= minimum_improvement:
             best_reconstruction_error = reconstruction_error
             torch.save(net.enc.state_dict(), enc_path)
             torch.save(net.dec.state_dict(), dec_path)
             epochs_without_improvement = 0
-
-            # Terminate training early if reconstruction improvement is below minimum accepted improvement
-            if reconstruction_improvement < minimum_improvement:
-                print(f"Ending training early as observed improvement is now under {minimum_improvement}")
-                return
         else:
             # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
             epochs_without_improvement += 1
 
             if epochs_without_improvement >= epoch_patience:
                 print(
-                    f"Ending training early as no decrease in reconstruction error observed in {epoch_patience} epochs")
-                return
+                    f"Ending training early as no significant improvement in reconstruction error observed in {epoch_patience} epochs")
+                break
 
         if epoch % 10 == 0:
             print(
                 f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
+
+    # load the best model and call compute_latent_direction then store it again before returning
+    net.enc.load_state_dict(torch.load(enc_path, map_location=DEVICE))
+    net.dec.load_state_dict(torch.load(dec_path, map_location=DEVICE))
+
+    net.automatically_set_latent_direction(train_loader)
+
+    torch.save(net.enc.state_dict(), enc_path)
+    torch.save(net.dec.state_dict(), dec_path)
 
 
 if __name__ == "__main__":

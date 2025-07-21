@@ -20,7 +20,7 @@ from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_O
 if __name__ == "__main__":
     # Generate sets of data with varying sizes
     # n_biomarkers_all = [i for i in range(50, 505, 50)]
-    n_biomarkers_all = [50]
+    n_biomarkers_all = [i for i in range(5, 15, 5)]
     # n_biomarkers_all = [i for i in range(5, 15, 5)]
     # for n_biomarkers in n_biomarkers_all:
         # generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=10 * n_biomarkers,
@@ -43,15 +43,19 @@ if __name__ == "__main__":
     # Write out results to file in case training is interrupted
     with open('../dataset_size_comparison_results.csv', 'w', newline='') as output_f:
         writer = csv.writer(output_f)
-        writer.writerow(['vae_time', 'ae_time', 'vae_reconstruction', 'ae_reconstruction', 'vae_staging', 'ae_staging'])
+        writer.writerow(['mean_vae_time', 'vae_time_std', 'mean_ae_time', 'ae_time_std',
+                         'mean_vae_reconstruction', 'vae_reconstruction_std',
+                         'mean_ae_reconstruction', 'ae_reconstruction_std',
+                         'mean_vae_staging', 'vae_staging_std',
+                         'mean_ae_staging', 'ae_staging_std'])
 
         for i in range(len(dataset_names)):
-            times_taken_to_fit_vae.append(0.)
-            times_taken_to_fit_ae.append(0.)
-            reconstruction_errors_vae.append(0.)
-            reconstruction_errors_ae.append(0.)
-            staging_errors_vae.append(0.)
-            staging_errors_ae.append(0.)
+            times_taken_to_fit_vae.append(np.zeros(n_trials))
+            times_taken_to_fit_ae.append(np.zeros(n_trials))
+            reconstruction_errors_vae.append(np.zeros(n_trials))
+            reconstruction_errors_ae.append(np.zeros(n_trials))
+            staging_errors_vae.append(np.zeros(n_trials))
+            staging_errors_ae.append(np.zeros(n_trials))
 
             for trial in range(n_trials):
                 n_biomarkers = n_biomarkers_all[i]
@@ -87,7 +91,7 @@ if __name__ == "__main__":
                 run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
-                times_taken_to_fit_vae[-1] += time_taken / n_trials
+                times_taken_to_fit_vae[-1][trial] = time_taken
 
                 # Evaluate
                 vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + dataset_name + ".pth")
@@ -98,8 +102,8 @@ if __name__ == "__main__":
 
                 staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, vae, DEVICE)
                 reconstruction_mse = reconstruction_mse.cpu()
-                reconstruction_errors_vae[-1] += reconstruction_mse.cpu() / n_trials
-                staging_errors_vae[-1] += staging_mse.cpu() / n_trials
+                reconstruction_errors_vae[-1][trial] = reconstruction_mse.cpu()
+                staging_errors_vae[-1][trial] = staging_mse.cpu()
 
                 # ---------- Train AE -----------
                 ae_enc = ae_stager.Encoder(d_in=n_biomarkers, d_latent=1).to(DEVICE)
@@ -114,7 +118,7 @@ if __name__ == "__main__":
                 run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
-                times_taken_to_fit_ae[-1] += time_taken / n_trials
+                times_taken_to_fit_ae[-1][trial] = time_taken
 
                 # Evaluate
                 ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + dataset_name + ".pth")
@@ -124,55 +128,85 @@ if __name__ == "__main__":
                 ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
 
                 staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, ae, DEVICE)
-                reconstruction_errors_ae[-1] += reconstruction_mse.cpu() / n_trials
-                staging_errors_ae[-1] += staging_mse.cpu() / n_trials
+                reconstruction_errors_ae[-1][trial] = reconstruction_mse.cpu()
+                staging_errors_ae[-1][trial] = staging_mse.cpu()
 
             # ----------- Write results to file -----------
-            writer.writerow([times_taken_to_fit_vae[-1],
-                             times_taken_to_fit_ae[-1],
-                             reconstruction_errors_vae[-1].item(),
-                             reconstruction_errors_ae[-1].item(),
-                             staging_errors_vae[-1].item(),
-                             staging_errors_ae[-1].item()])
+            writer.writerow([times_taken_to_fit_vae[-1].mean().item(),
+                             times_taken_to_fit_vae[-1].std().item(),
+                             times_taken_to_fit_ae[-1].mean().item(),
+                             times_taken_to_fit_ae[-1].std().item(),
+                             reconstruction_errors_vae[-1].mean().item(),
+                             reconstruction_errors_vae[-1].std().item(),
+                             reconstruction_errors_ae[-1].mean().item(),
+                             reconstruction_errors_ae[-1].std().item(),
+                             staging_errors_vae[-1].mean().item(),
+                             staging_errors_vae[-1].std().item(),
+                             staging_errors_ae[-1].mean().item(),
+                             staging_errors_ae[-1].std().item()])
             output_f.flush()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_vae))
+    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_vae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(times_taken_to_fit_vae).mean(axis=-1),
+                yerr=np.array(times_taken_to_fit_vae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Time taken to fit VAE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Time taken (s)")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_ae))
+    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_ae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(times_taken_to_fit_ae).mean(axis=-1),
+                yerr=np.array(times_taken_to_fit_ae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Time taken to fit AE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Time taken (s)")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(reconstruction_errors_vae))
+    ax.plot(np.array(n_biomarkers_all), np.array(reconstruction_errors_vae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(reconstruction_errors_vae).mean(axis=-1),
+                yerr=np.array(reconstruction_errors_vae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Mean squared reconstruction error of VAE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Reconstruction error")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(reconstruction_errors_ae))
+    ax.plot(np.array(n_biomarkers_all), np.array(reconstruction_errors_ae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(reconstruction_errors_ae).mean(axis=-1),
+                yerr=np.array(reconstruction_errors_ae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Mean squared reconstruction error of AE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Reconstruction error")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(staging_errors_vae))
+    ax.plot(np.array(n_biomarkers_all), np.array(staging_errors_vae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(staging_errors_vae).mean(axis=-1),
+                yerr=np.array(staging_errors_vae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Mean squared staging error of VAE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Staging error")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(staging_errors_ae))
+    ax.plot(np.array(n_biomarkers_all), np.array(staging_errors_ae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(staging_errors_ae).mean(axis=-1),
+                yerr=np.array(staging_errors_ae).std(axis=-1),
+                fmt='o',
+                capsize=3)
     fig.suptitle("Mean squared staging error of AE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Staging error")
