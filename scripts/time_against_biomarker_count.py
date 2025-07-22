@@ -1,4 +1,5 @@
-# A script to generate datasets of different biomarker counts, measure the time taken to learn stages from them,
+# A script to generate datasets of different biomarker counts, measure the time taken to learn stages from them
+# as well as run inference (compute latent representations) on the whole training set),
 # and plot time taken against biomarker count.
 
 import torch
@@ -20,18 +21,15 @@ from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_O
 if __name__ == "__main__":
     # Generate sets of data with varying sizes
     # n_biomarkers_all = [i for i in range(50, 505, 50)]
-    n_biomarkers_all = [i for i in range(5, 15, 5)]
-    # n_biomarkers_all = [i for i in range(5, 15, 5)]
-    # for n_biomarkers in n_biomarkers_all:
-        # generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=10 * n_biomarkers,
-        #                          n_controls=n_biomarkers, n_patients=n_biomarkers)
+    n_biomarkers_all = [i for i in range(10, 40, 10)]
+    # n_biomarkers_all = [10, 50, 100, 250, 500]
 
     # Define dataset names
     dataset_names = [f"synthetic_{12 * n_biomarkers}_{n_biomarkers}_0" for n_biomarkers in n_biomarkers_all]
 
     # For each dataset, fit a model and measure how long it takes, then evaluate reconstruction error.
-    times_taken_to_fit_vae = []
-    times_taken_to_fit_ae = []
+    time_taken_vae = []
+    time_taken_ae = []
     reconstruction_errors_vae = []
     reconstruction_errors_ae = []
     staging_errors_vae = []
@@ -50,8 +48,8 @@ if __name__ == "__main__":
                          'mean_ae_staging', 'ae_staging_std'])
 
         for i in range(len(dataset_names)):
-            times_taken_to_fit_vae.append(np.zeros(n_trials))
-            times_taken_to_fit_ae.append(np.zeros(n_trials))
+            time_taken_vae.append(np.zeros(n_trials))
+            time_taken_ae.append(np.zeros(n_trials))
             reconstruction_errors_vae.append(np.zeros(n_trials))
             reconstruction_errors_ae.append(np.zeros(n_trials))
             staging_errors_vae.append(np.zeros(n_trials))
@@ -88,19 +86,25 @@ if __name__ == "__main__":
 
                 # Run training loop
                 start_time = time.time()
-                run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae",
+                run_training(n_epochs, vae, dataset_name, train_loader, val_loader,
+                             opt_vae, vae_stager.vae_criterion, model_type="vae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
-                times_taken_to_fit_vae[-1][trial] = time_taken
+                time_taken_vae[-1][trial] = time_taken
 
-                # Evaluate
+                # Load best model obtained from training, to run inference and evaluate.
                 vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + dataset_name + ".pth")
                 vae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "dec_" + dataset_name + ".pth")
 
                 vae_enc.load_state_dict(torch.load(vae_enc_model_path, map_location=DEVICE))
                 vae_dec.load_state_dict(torch.load(vae_dec_model_path, map_location=DEVICE))
 
+                # Measure the time taken to run inference and compute performance metrics on the validation set.
+                start_time = time.time()
                 staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, vae, DEVICE)
+                time_taken = time.time() - start_time  # in seconds
+                time_taken_vae[-1][trial] += time_taken
+
                 reconstruction_mse = reconstruction_mse.cpu()
                 reconstruction_errors_vae[-1][trial] = reconstruction_mse.cpu()
                 staging_errors_vae[-1][trial] = staging_mse.cpu()
@@ -115,27 +119,34 @@ if __name__ == "__main__":
 
                 # Run training loop
                 start_time = time.time()
-                run_training(n_epochs, ae, dataset_name, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae",
+                run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
+                             opt_ae, ae_stager.ae_criterion, model_type="ae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
-                times_taken_to_fit_ae[-1][trial] = time_taken
+                time_taken_ae[-1][trial] = time_taken
 
-                # Evaluate
+                # Load best model obtained from training, to run inference and evaluate.
                 ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + dataset_name + ".pth")
                 ae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "dec_" + dataset_name + ".pth")
 
                 ae_enc.load_state_dict(torch.load(ae_enc_model_path, map_location=DEVICE))
                 ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
 
+                # Measure the time taken to run inference and compute performance metrics on the validation set.
+                start_time = time.time()
                 staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, ae, DEVICE)
+                time_taken = time.time() - start_time  # in seconds
+                time_taken_ae[-1][trial] += time_taken
+
+                reconstruction_mse = reconstruction_mse.cpu()
                 reconstruction_errors_ae[-1][trial] = reconstruction_mse.cpu()
                 staging_errors_ae[-1][trial] = staging_mse.cpu()
 
             # ----------- Write results to file -----------
-            writer.writerow([times_taken_to_fit_vae[-1].mean().item(),
-                             times_taken_to_fit_vae[-1].std().item(),
-                             times_taken_to_fit_ae[-1].mean().item(),
-                             times_taken_to_fit_ae[-1].std().item(),
+            writer.writerow([time_taken_vae[-1].mean().item(),
+                             time_taken_vae[-1].std().item(),
+                             time_taken_ae[-1].mean().item(),
+                             time_taken_ae[-1].std().item(),
                              reconstruction_errors_vae[-1].mean().item(),
                              reconstruction_errors_vae[-1].std().item(),
                              reconstruction_errors_ae[-1].mean().item(),
@@ -147,23 +158,23 @@ if __name__ == "__main__":
             output_f.flush()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_vae).mean(axis=-1))
-    ax.errorbar(np.array(n_biomarkers_all), np.array(times_taken_to_fit_vae).mean(axis=-1),
-                yerr=np.array(times_taken_to_fit_vae).std(axis=-1),
+    ax.plot(np.array(n_biomarkers_all), np.array(time_taken_vae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(time_taken_vae).mean(axis=-1),
+                yerr=np.array(time_taken_vae).std(axis=-1),
                 fmt='o',
                 capsize=3)
-    fig.suptitle("Time taken to fit VAE")
+    fig.suptitle("Full training + inference time of the VAE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Time taken (s)")
     fig.show()
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.plot(np.array(n_biomarkers_all), np.array(times_taken_to_fit_ae).mean(axis=-1))
-    ax.errorbar(np.array(n_biomarkers_all), np.array(times_taken_to_fit_ae).mean(axis=-1),
-                yerr=np.array(times_taken_to_fit_ae).std(axis=-1),
+    ax.plot(np.array(n_biomarkers_all), np.array(time_taken_ae).mean(axis=-1))
+    ax.errorbar(np.array(n_biomarkers_all), np.array(time_taken_ae).mean(axis=-1),
+                yerr=np.array(time_taken_ae).std(axis=-1),
                 fmt='o',
                 capsize=3)
-    fig.suptitle("Time taken to fit AE")
+    fig.suptitle("Full training + inference time of the AE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Time taken (s)")
     fig.show()
@@ -196,7 +207,7 @@ if __name__ == "__main__":
                 yerr=np.array(staging_errors_vae).std(axis=-1),
                 fmt='o',
                 capsize=3)
-    fig.suptitle("Mean squared staging error of VAE")
+    fig.suptitle("Root mean squared staging error of VAE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Staging error")
     fig.show()
@@ -207,7 +218,7 @@ if __name__ == "__main__":
                 yerr=np.array(staging_errors_ae).std(axis=-1),
                 fmt='o',
                 capsize=3)
-    fig.suptitle("Mean squared staging error of AE")
+    fig.suptitle("Root mean squared staging error of AE")
     ax.set_xlabel("No. biomarkers")
     ax.set_ylabel("Staging error")
     fig.show()

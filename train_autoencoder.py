@@ -11,8 +11,8 @@ from evaluation import evaluate_autoencoder
 from models import ae_stager, vae_stager
 
 
-def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, model_type, device):
-    dataset_size = len(train_loader.dataset)
+def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser, criterion, model_type, device):
+    train_dataset_size = len(train_loader.dataset)
     model_dir = os.path.join(SAVED_MODEL_DIR, model_type)
     os.makedirs(model_dir, exist_ok=True)
 
@@ -20,9 +20,9 @@ def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, 
     dec_path = os.path.join(model_dir, "dec_" + model_name + ".pth")
 
     epochs_without_improvement = 0
-    best_reconstruction_error = float('inf')
-    epoch_patience = 20
-    minimum_improvement = 1e-4  # Stop training if improvement falls below this
+    best_loss = float('inf')
+    epoch_patience = 10
+    minimum_improvement = 1e-4  # Minimum improvement considered 'significant'
 
     for epoch in tqdm(range(n_epochs), desc=f"Training {model_type}"):
         train_loss = 0.0
@@ -31,49 +31,44 @@ def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, 
             optimiser.zero_grad()
 
             loss = criterion(X, net, device)
-
-            # if torch.isnan(torch.tensor(loss)):
-            #     print(loss)
-            # if torch.any(torch.isnan(X)):
-            #     print(X)
-
             loss.backward()
 
-            # for param in net.enc.parameters():
-            #     if torch.any(torch.isnan(param.grad)):
-            #         print("gradient:")
-            #         exit()
-
             optimiser.step()
-            train_loss += loss.item() * X.shape[0] / dataset_size
+            train_loss += loss.item() * X.shape[0] / train_dataset_size
 
-            # for param in net.enc.parameters():
-            #     if torch.any(torch.isnan(param)):
-            #         print("parameter:")
-            #         exit()
+        # Compute loss on validation set
+        val_loss = 0.0
+        val_dataset_size = len(val_loader.dataset)
+        with torch.no_grad():
+            for (X, _) in val_loader:
+                X = X.to(device)
+                optimiser.zero_grad()
 
-        # compute error between latents and stages - just to track progress
-        mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
+                val_loss += criterion(X, net, device).item() * X.shape[0] / val_dataset_size
 
-        if best_reconstruction_error - reconstruction_error >= minimum_improvement:
-            best_reconstruction_error = reconstruction_error
+        # Compute error between latents and stages, just to track progress
+        # rmse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
+
+        if best_loss - val_loss >= minimum_improvement:
+            best_loss = val_loss
             torch.save(net.enc.state_dict(), enc_path)
             torch.save(net.dec.state_dict(), dec_path)
             epochs_without_improvement = 0
         else:
-            # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
+            # Terminate training early if no significant improvement
             epochs_without_improvement += 1
 
             if epochs_without_improvement >= epoch_patience:
                 print(
-                    f"Ending training early as no significant improvement in reconstruction error observed in {epoch_patience} epochs")
+                    f"Ending training early as no significant validation loss decrease"
+                    f"has been observed in {epoch_patience} epochs")
                 break
 
         if epoch % 10 == 0:
             print(
-                f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}, MSE stage error = {mse_stage_error:.4f}")
+                f"Epoch {epoch}, train loss = {train_loss:.4f}, val_loss = {val_loss:.4f}")
 
-    # load the best model and call compute_latent_direction then store it again before returning
+    # Load the best model and call compute_latent_direction then store it again before returning
     net.enc.load_state_dict(torch.load(enc_path, map_location=DEVICE))
     net.dec.load_state_dict(torch.load(dec_path, map_location=DEVICE))
 
@@ -84,9 +79,9 @@ def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, 
 
 
 if __name__ == "__main__":
-    num_sets = 10
+    num_sets = 1
     dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
-    model_name = "synthetic_120_10_multi"
+    model_name = "synthetic_120_10_0"
 
     train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
@@ -109,7 +104,7 @@ if __name__ == "__main__":
     opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, vae, model_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae", device=DEVICE)
+    run_training(n_epochs, vae, model_name, train_loader, val_loader, opt_vae, vae_stager.vae_criterion, model_type="vae", device=DEVICE)
 
     # Evaluate on the final models saved during training
     vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + model_name + ".pth")
@@ -133,7 +128,8 @@ if __name__ == "__main__":
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, ae, model_name, train_loader, opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
+    run_training(n_epochs, ae, model_name, train_loader, val_loader,
+                 opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
 
     # Evaluate on the final models saved during training
     ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + model_name + ".pth")

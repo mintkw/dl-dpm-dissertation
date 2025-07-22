@@ -44,20 +44,18 @@ def evaluate_autoencoder(dataloader, net, device):
             reconstruction_errors.append((reconstruction - X) ** 2)
 
     predictions = torch.concatenate(predictions).squeeze().to(device)
-
     # scale predictions with number of biomarkers
     predictions *= n_biomarkers
 
     gt_stages = torch.concatenate(gt_stages).to(device)
     # gt_stages /= torch.max(gt_stages)
 
+    rmse_stage_error = torch.sqrt(torch.mean((predictions - gt_stages) ** 2))
+
     reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
-
-    mse_stage_error = torch.min(torch.mean((predictions - gt_stages) ** 2))
-
     reconstruction_error = torch.mean(reconstruction_errors)
 
-    return mse_stage_error, reconstruction_error
+    return rmse_stage_error, reconstruction_error
 
 
 def evaluate_sequence(preds, gt):
