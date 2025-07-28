@@ -8,7 +8,7 @@ def compute_reconstruction_mse(dataloader, net, device):
     with torch.no_grad():
         for X, label in dataloader:
             X = X.to(device)
-            reconstruction = net.reconstruct(X)
+            reconstruction = net.reconstruct_input(X)
             reconstruction_errors.append((reconstruction - X) ** 2)
 
     reconstruction_errors = torch.concatenate(reconstruction_errors).to(device)
@@ -38,9 +38,9 @@ def evaluate_autoencoder(dataloader, net, device):
             gt_stages.append(label)
 
             X = X.to(device)
-            raw_preds = net.encode(X)
+            raw_preds = net.predict_stage(X)
             predictions.append(raw_preds)
-            reconstruction = net.reconstruct(X)
+            reconstruction = net.reconstruct_input(X)
             reconstruction_errors.append((reconstruction - X) ** 2)
 
     predictions = torch.concatenate(predictions).squeeze().to(device)

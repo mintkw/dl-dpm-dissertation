@@ -9,6 +9,7 @@ from scipy import stats
 from config import DEVICE, SAVED_MODEL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
+from models.autoencoder import AutoEncoder
 
 
 class Encoder(nn.Module):
@@ -43,44 +44,47 @@ class Decoder(nn.Module):
         return self.fc(h)
 
 
-class AE:
+class AE(AutoEncoder):
     def __init__(self, enc, dec):
         self.enc = enc
         self.dec = dec
         # self.latent_dir = 1  # 1 for ascending latent (0 is control and 1 is patient), 0 for descending
 
-    def encode(self, X):
+    def predict_uncorrected_stage(self, X):
+        return self.enc(X)
+
+    def predict_stage(self, X):
         return self.enc.latent_dir * self.enc(X) + (1 - self.enc.latent_dir) * (1 - self.enc(X))
 
-    def reconstruct(self, X):
+    def reconstruct_input(self, X):
         return self.dec(self.enc(X))
 
-    def decode(self, z):
+    def decode_latent(self, z):
         return self.dec(z)
 
-    def automatically_set_latent_direction(self, dataloader):
-        with torch.no_grad():
-            batch_size = next(iter(dataloader))[0].shape[0]
-            mean_correlation = 0.  # mean correlation across all variables and batches
-            dataset_size = len(dataloader.dataset)
-
-            for X, _ in dataloader:
-                uncorrected_latents = self.enc(X)
-
-                # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-                data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
-
-                correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
-                mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
-
-            if mean_correlation > 0:
-                self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
-            else:
-                self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
+    # def automatically_set_latent_direction(self, dataloader):
+    #     with torch.no_grad():
+    #         batch_size = next(iter(dataloader))[0].shape[0]
+    #         mean_correlation = 0.  # mean correlation across all variables and batches
+    #         dataset_size = len(dataloader.dataset)
+    #
+    #         for X, _ in dataloader:
+    #             uncorrected_latents = self.predict_uncorrected_stage(X)
+    #
+    #             # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+    #             data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
+    #
+    #             correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
+    #             mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
+    #
+    #         if mean_correlation > 0:
+    #             self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
+    #         else:
+    #             self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
 
 
 def ae_criterion(X, ae, device):
-    reconstructions = ae.reconstruct(X)
+    reconstructions = ae.reconstruct_input(X)
 
     ms_error = ((X - reconstructions) ** 2).mean()
 

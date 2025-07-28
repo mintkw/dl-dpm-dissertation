@@ -11,6 +11,7 @@ from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, SAVED_MODEL_D
 from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
+from models.autoencoder import AutoEncoder
 
 
 class Encoder(nn.Module):
@@ -54,42 +55,46 @@ class Decoder(nn.Module):
         return dist.Normal(X_mu, X_sigma)
 
 
-class VAE:
+class VAE(AutoEncoder):
     def __init__(self, enc, dec):
         self.enc = enc
         self.dec = dec
 
-    def encode(self, X):
-        return self.enc.latent_dir * self.enc(X).mean + (1 - self.enc.latent_dir) * (1 - self.enc(X).mean)
+    def predict_stage(self, X):
+        uncorrected_stage = self.predict_uncorrected_stage(X)
+        return self.enc.latent_dir * uncorrected_stage + (1 - self.enc.latent_dir) * (1 - uncorrected_stage)
 
-    def decode(self, X):
+    def predict_uncorrected_stage(self, X):
+        return self.enc(X).mean
+
+    def decode_latent(self, X):
         return self.dec(X).sample()  # or mean...?
 
-    def reconstruct(self, X):
+    def reconstruct_input(self, X):
         return self.dec(self.enc(X).sample()).sample()
 
-    def automatically_set_latent_direction(self, dataloader):
-        with torch.no_grad():
-            batch_size = next(iter(dataloader))[0].shape[0]
-            mean_correlation = 0.  # mean correlation across all variables and batches
-            dataset_size = len(dataloader.dataset)
+    # def automatically_set_latent_direction(self, dataloader):
+    #     with torch.no_grad():
+    #         batch_size = next(iter(dataloader))[0].shape[0]
+    #         mean_correlation = 0.  # mean correlation across all variables and batches
+    #         dataset_size = len(dataloader.dataset)
+    #
+    #         for X, _ in dataloader:
+    #             uncorrected_latents = self.enc(X).mean
+    #
+    #             # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
+    #             data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
+    #
+    #             correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
+    #             mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
+    #
+    #         if mean_correlation > 0:
+    #             self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
+    #         else:
+    #             self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
 
-            for X, _ in dataloader:
-                uncorrected_latents = self.enc(X).sample()
 
-                # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-                data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
-
-                correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
-                mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
-
-            if mean_correlation > 0:
-                self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
-            else:
-                self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
-
-
-def compute_elbo(vae, X, device, beta=3):
+def compute_elbo(vae, X, device, beta):
     # q(z | X)
     q_z = vae.enc(X)
 
@@ -125,10 +130,13 @@ def compute_elbo(vae, X, device, beta=3):
     return -kl_div + expected_p_x
 
 
-def vae_criterion(X, vae, device):
-    elbos = compute_elbo(vae, X, device)
+def vae_criterion_wrapper(beta=1):
+    def vae_criterion(X, vae, device):
+        elbos = compute_elbo(vae, X, device, beta=beta)
 
-    # The loss is the sum of the negative per-datapoint ELBO
-    loss = -elbos.sum()
+        # The loss is the sum of the negative per-datapoint ELBO
+        loss = -elbos.sum()
 
-    return loss
+        return loss
+
+    return vae_criterion
