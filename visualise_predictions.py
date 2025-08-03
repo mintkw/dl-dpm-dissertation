@@ -14,7 +14,8 @@ if __name__ == "__main__":
 
     num_sets = 1
     dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
-    # dataset_names = ["synthetic_120_10_0"]
+    # dataset_names = ["synthetic_6000_500_0"]
+    # model_name = "synthetic_6000_500_0"
     model_name = "synthetic_120_10_0"
 
     model_type = "vae"  # only vae or ae supported currently
@@ -76,11 +77,11 @@ if __name__ == "__main__":
     fig.suptitle(label + " on validation set")
     fig.show()
 
-    # Plot predicted stages against true stages
-    fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, net, DEVICE)
-    label = fig._suptitle.get_text()
-    fig.suptitle(label + " on training set")
-    fig.show()
+    # # Plot predicted stages against true stages
+    # fig, ax = plotting.predicted_stage_comparison(train_loader, num_biomarkers, net, DEVICE)
+    # label = fig._suptitle.get_text()
+    # fig.suptitle(label + " on training set")
+    # fig.show()
 
     fig, ax = plotting.predicted_stage_comparison(val_loader, num_biomarkers, net, DEVICE)
     label = fig._suptitle.get_text()

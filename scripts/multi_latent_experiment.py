@@ -1,98 +1,82 @@
-# --------------------------- 2 LATENT VARIABLES EXPERIMENT ---------------------------
+# Experiments with using a multi-dimensional latent space to capture different subtypes
+# present in input data.
+
 import os
 import torch
 import itertools
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import numpy as np
 
 import evaluation
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from train_autoencoder import run_training
 
 from models import ae_stager, vae_stager
 
 
-def run_training(n_epochs, net, model_name, train_loader, optimiser, criterion, model_type, device):
-    dataset_size = len(train_loader.dataset)
-    model_dir = os.path.join(SAVED_MODEL_DIR, model_type)
-    os.makedirs(model_dir, exist_ok=True)
+def plot_dataset_in_latent_space(net, dataset_names):
+    fig, ax = plt.subplots(figsize=(10, 10))
+    fig.suptitle("Encoding of the training set in the latent space")
 
-    enc_path = os.path.join(model_dir, "enc_" + model_name + ".pth")
-    dec_path = os.path.join(model_dir, "dec_" + model_name + ".pth")
+    # Load the data from each subtype individually so they can be differentiated through colour coding
+    train_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
+                                          obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                          label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
+    train_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in train_datasets]
+    cmaps = ['viridis', 'inferno']
 
-    epochs_without_improvement = 0
-    best_reconstruction_error = float('inf')
-    epoch_patience = 20
-    minimum_improvement = 1e-4  # Stop training if improvement falls below this
+    for i in range(len(train_loaders)):
+        loader = train_loaders[i]
+        stage_latents = []
+        subtype_latents = []
+        labels = []
+        for X, stage in loader:
+            stage_latents.append(net.predict_stage(X))
+            subtype_latents.append(net.predict_subtype(X))
+            # latents.append(net.encode(X))
+            labels.append(stage)
+        # latents = torch.concatenate(latents, dim=0).detach().cpu()
+        stage_latents = torch.concatenate(stage_latents, dim=0).detach().cpu()
+        subtype_latents = torch.concatenate(subtype_latents, dim=0).detach().cpu()
 
-    for epoch in tqdm(range(n_epochs), desc=f"Training {model_type}"):
-        train_loss = 0.0
-        for (X, _) in train_loader:
-            X = X.to(device)
-            optimiser.zero_grad()
+        labels = torch.concatenate(labels, dim=0).detach().cpu()
 
-            loss = criterion(X, net, device)
+        colourmap = ax.scatter(stage_latents, subtype_latents, c=labels, cmap=cmaps[i])
+        fig.colorbar(colourmap, ax=ax)
 
-            # if torch.isnan(torch.tensor(loss)):
-            #     print(loss)
-            # if torch.any(torch.isnan(X)):
-            #     print(X)
+    fig.show()
 
-            loss.backward()
 
-            # for param in net.enc.parameters():
-            #     if torch.any(torch.isnan(param.grad)):
-            #         print("gradient:")
-            #         exit()
+class AE(ae_stager.AE):
+    def __init__(self, enc, dec):
+        super().__init__(enc, dec)
 
-            optimiser.step()
-            train_loss += loss.item() * X.shape[0] / dataset_size
+    def predict_uncorrected_stage(self, X):
+        return self.enc(X)[:, 0].unsqueeze(1)
 
-            # for param in net.enc.parameters():
-            #     if torch.any(torch.isnan(param)):
-            #         print("parameter:")
-            #         exit()
+    def predict_subtype(self, X):
+        return self.enc(X)[:, 1]
 
-        # compute error between latents and stages - just to track progress
-        # mse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
-        reconstruction_error = evaluation.compute_reconstruction_mse(train_loader, net, device)
 
-        if reconstruction_error < best_reconstruction_error:
-            # Compute the correct latent direction, but only if the current model is better than the preceding
-            net.calculate_latent_direction(train_loader)
+class VAE(vae_stager.VAE):
+    def __init__(self, enc, dec):
+        super().__init__(enc, dec)
 
-            reconstruction_improvement = best_reconstruction_error - reconstruction_error
-            best_reconstruction_error = reconstruction_error
-            torch.save(net.enc.state_dict(), enc_path)
-            torch.save(net.dec.state_dict(), dec_path)
-            epochs_without_improvement = 0
+    def predict_uncorrected_stage(self, X):
+        return self.enc(X).mean[:, 0].unsqueeze(1)
 
-            # Terminate training early if reconstruction improvement is below minimum accepted improvement
-            if reconstruction_improvement < minimum_improvement:
-                print(f"Ending training early as observed improvement is now under {minimum_improvement}")
-                return
-        else:
-            # Terminate training early if still no decrease in reconstruction error (evaluated every 10 epochs)
-            epochs_without_improvement += 1
-
-            if epochs_without_improvement >= epoch_patience:
-                print(
-                    f"Ending training early as no decrease in reconstruction error observed in {epoch_patience} epochs")
-                return
-
-        if epoch % 10 == 0:
-            print(
-                f"Epoch {epoch}, train loss = {train_loss:.4f}, average reconstruction squared distance = {reconstruction_error:.4f}")
+    def predict_subtype(self, X):
+        return self.enc(X).mean[:, 1]
 
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    num_sets = 3
+    num_sets = 2
     dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
     model_name = "synthetic_120_10_0"
 
-    model_type = "ae"  # only vae or ae supported currently
+    model_type = "vae"  # only vae or ae supported currently
     if model_type not in ["vae", "ae"]:
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
@@ -114,14 +98,14 @@ if __name__ == "__main__":
         enc = vae_stager.Encoder(d_in=num_biomarkers, d_latent=2).to(DEVICE)
         dec = vae_stager.Decoder(d_out=num_biomarkers, d_latent=2).to(DEVICE)
 
-        net = vae_stager.VAE(enc=enc, dec=dec)
-        criterion = vae_stager.vae_criterion
+        net = VAE(enc=enc, dec=dec)
+        criterion = vae_stager.vae_criterion_wrapper(beta=2)
 
     elif model_type == "ae":
         enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=2).to(DEVICE)
         dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=2).to(DEVICE)
 
-        net = ae_stager.AE(enc=enc, dec=dec)
+        net = AE(enc=enc, dec=dec)
         criterion = ae_stager.ae_criterion
 
     opt = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()), lr=0.001)
@@ -142,7 +126,7 @@ if __name__ == "__main__":
 
     # ---------- Train -----------
     # Run training loop
-    run_training(n_epochs, net, model_name, train_loader, opt, criterion, model_type=model_type, device=DEVICE)
+    run_training(n_epochs, net, model_name, train_loader, val_loader, opt, criterion, model_type=model_type, device=DEVICE)
 
     # Evaluate on the final models saved during training
     enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + model_name + ".pth")
@@ -155,9 +139,7 @@ if __name__ == "__main__":
 
     print("Reconstruction MSE of trained model on validation set:", reconstruction_mse)
 
-    # exit()
-
-    # Visualise the latent space -------------------------
+    # Visualise the decoded latent space -------------------------
     n_rows = 5
     n_cols = 5
     fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(15, 10))
@@ -170,7 +152,7 @@ if __name__ == "__main__":
         y = i // n_rows
         x = i % n_cols
         latents = latent_grid[y][x]
-        outputs = net.decode(latents).detach().cpu()
+        outputs = net.decode_latent(latents).detach().cpu()
         ax.flat[i].imshow(outputs.unsqueeze(0), cmap='grey')
         ax.flat[i].set_title(f"{latents.tolist()}")
 
@@ -179,20 +161,32 @@ if __name__ == "__main__":
 
     fig.show()
 
-    fig, ax = plt.subplots(figsize=(10, 10))
-    fig.suptitle("Encoding of the training set in the latent space")
-
-    latents = []
-    labels = []
-    for X, stage in train_loader:
-        latents.append(net.encode(X))
-        labels.append(stage)
-    latents = torch.concatenate(latents, dim=0).detach().cpu()
-    labels = torch.concatenate(labels, dim=0).detach().cpu()
-
-    pcm = ax.scatter(latents[:, 0], latents[:, 1], c=labels)
-    fig.colorbar(pcm, ax=ax)
-    fig.show()
+    # Visualise the training set encoded in the latent space ---------------------
+    plot_dataset_in_latent_space(net=net, dataset_names=dataset_names)
+    # fig, ax = plt.subplots(figsize=(10, 10))
+    # fig.suptitle("Encoding of the training set in the latent space")
+    #
+    # # Load the data from each subtype individually so they can be differentiated through colour coding
+    # train_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
+    #                                       obs_directory=SIMULATED_OBS_TRAIN_DIR,
+    #                                       label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
+    # train_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in train_datasets]
+    # cmaps = ['viridis', 'inferno']
+    #
+    # for i in range(len(train_loaders)):
+    #     loader = train_loaders[i]
+    #     latents = []
+    #     labels = []
+    #     for X, stage in loader:
+    #         latents.append(net.predict_stage(X))
+    #         labels.append(stage)
+    #     latents = torch.concatenate(latents, dim=0).detach().cpu()
+    #     labels = torch.concatenate(labels, dim=0).detach().cpu()
+    #
+    #     colourmap = ax.scatter(latents[:, 0], latents[:, 1], c=labels, cmap=cmaps[i])
+    #     fig.colorbar(colourmap, ax=ax)
+    #
+    # fig.show()
 
     plt.show()
 

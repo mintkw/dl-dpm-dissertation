@@ -13,6 +13,17 @@ class AutoEncoder(abc.ABC):
         self.dec = None
 
     @abc.abstractmethod
+    def encode(self, X):
+        """
+        Args:
+            X: Input
+
+        Returns:
+            The output of the network's encoder.
+        """
+        return self.enc(X)
+
+    @abc.abstractmethod
     def predict_stage(self, X):
         pass
 
@@ -21,12 +32,11 @@ class AutoEncoder(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def reconstruct_input(self, X):
-        pass
-
-    @abc.abstractmethod
     def decode_latent(self, z):
         pass
+
+    def reconstruct_input(self, X):
+        return self.decode_latent(self.encode(X))
 
     def automatically_set_latent_direction(self, dataloader):
         with torch.no_grad():

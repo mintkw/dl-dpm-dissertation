@@ -46,18 +46,20 @@ class Decoder(nn.Module):
 
 class AE(AutoEncoder):
     def __init__(self, enc, dec):
+        super().__init__()
         self.enc = enc
         self.dec = dec
         # self.latent_dir = 1  # 1 for ascending latent (0 is control and 1 is patient), 0 for descending
+
+    def encode(self, X):
+        return self.enc(X)
 
     def predict_uncorrected_stage(self, X):
         return self.enc(X)
 
     def predict_stage(self, X):
-        return self.enc.latent_dir * self.enc(X) + (1 - self.enc.latent_dir) * (1 - self.enc(X))
-
-    def reconstruct_input(self, X):
-        return self.dec(self.enc(X))
+        uncorrected_stage = self.predict_uncorrected_stage(X)
+        return self.enc.latent_dir * uncorrected_stage + (1 - self.enc.latent_dir) * (1 - uncorrected_stage)
 
     def decode_latent(self, z):
         return self.dec(z)

@@ -1,14 +1,83 @@
 import os
 
 import torch
+import torch.nn as nn
 import itertools
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-from evaluation import evaluate_autoencoder
+from plotting import predicted_stage_comparison
+from models import ae_stager
+import evaluation
+from subtyping_utils import plot_dataset_in_latent_space, compute_subtype_accuracy, compute_subtype_accuracy_with_cluster_mapping
 
-from models import ae_stager, vae_stager
+
+class Encoder(nn.Module):
+
+    def __init__(self, n_biomarkers, d_latent, n_subtypes):
+        super().__init__()
+        self.d_latent = d_latent
+        self.n_subtypes = n_subtypes
+        self.n_biomarkers = n_biomarkers
+        self.net = nn.Sequential(nn.Linear(self.n_biomarkers, 16),
+                                 nn.ReLU())
+        self.stage_fc = nn.Linear(16, d_latent)
+        self.subtype_fc = nn.Linear(16, n_subtypes)
+
+        self.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False))  # 1 for ascending latent (0 is control and 1 is patient), 0 for descending
+
+    def forward(self, X):
+        h = self.net(X)
+
+        stage = torch.sigmoid(self.stage_fc(h)) * self.n_biomarkers
+
+        # The subtype output is meant to represent a normalised weightage over possible subtypes
+        temperature = 0.05
+        subtype_output = self.subtype_fc(h)
+        subtype = (torch.exp(subtype_output / temperature) /
+                   torch.sum(torch.exp(subtype_output / temperature), dim=1).unsqueeze(1))
+
+        return torch.concatenate([stage, subtype], dim=-1)
+
+
+class Decoder(nn.Module):
+    def __init__(self, d_out, d_latent, n_subtypes):
+        super().__init__()
+        self.d_latent = d_latent
+        self.n_subtypes = n_subtypes
+        self.net = nn.Sequential(nn.Linear(self.d_latent + self.n_subtypes, 16),
+                                 nn.ReLU())
+
+        self.fc = nn.Linear(16, d_out)
+
+    def forward(self, Z):
+        h = self.net(Z)
+
+        return self.fc(h)
+
+
+class AE(ae_stager.AE):
+    def __init__(self, enc, dec):
+        super().__init__(enc, dec)
+
+    def predict_uncorrected_stage(self, X):
+        return self.enc(X)[:, 0].unsqueeze(1) / X.shape[1]  # In the encoder we scale up to distinguish from subtype
+
+    def predict_subtype(self, X):
+        return torch.argmax(self.enc(X)[:, 1:], dim=-1)
+
+    def subtype_scores(self, X):
+        return self.enc(X)[:, 1:]
+
+
+# def ae_criterion(X, ae, device):
+#     reconstructions = ae.reconstruct_input(X)
+#
+#     ms_error = ((X - reconstructions) ** 2).mean()
+#
+#     return ms_error
 
 
 def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser, criterion, model_type, device):
@@ -79,7 +148,7 @@ def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser,
 
 
 if __name__ == "__main__":
-    num_sets = 1
+    num_sets = 3
     dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
     model_name = "synthetic_120_10_0"
 
@@ -93,38 +162,11 @@ if __name__ == "__main__":
 
     n_epochs = 1000
 
-    # ---------- Train VAE -----------
-    # Define network
-    vae_enc = vae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    vae_dec = vae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
-
-    vae = vae_stager.VAE(enc=vae_enc, dec=vae_dec)
-
-    # Define optimiser
-    opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
-
-    # Run training loop
-    run_training(n_epochs, vae, model_name, train_loader, val_loader, opt_vae,
-                 vae_stager.vae_criterion_wrapper(beta=1), model_type="vae", device=DEVICE)
-
-    # Evaluate on the final models saved during training
-    vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + model_name + ".pth")
-    vae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "dec_" + model_name + ".pth")
-
-    vae_enc.load_state_dict(torch.load(vae_enc_model_path, map_location=DEVICE))
-    vae_dec.load_state_dict(torch.load(vae_dec_model_path, map_location=DEVICE))
-
-    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, vae, DEVICE)
-    reconstruction_mse = reconstruction_mse.cpu()
-
-    print("Staging MSE of trained VAE on validation set:", staging_mse)
-    print("Reconstruction MSE of trained VAE on validation set:", reconstruction_mse)
-
     # ---------- Train AE -----------
-    ae_enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    ae_dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
+    ae_enc = Encoder(n_biomarkers=num_biomarkers, d_latent=1, n_subtypes=num_sets).to(DEVICE)
+    ae_dec = Decoder(d_out=num_biomarkers, d_latent=1, n_subtypes=num_sets).to(DEVICE)
 
-    ae = ae_stager.AE(enc=ae_enc, dec=ae_dec)
+    ae = AE(enc=ae_enc, dec=ae_dec)
 
     opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
 
@@ -132,6 +174,7 @@ if __name__ == "__main__":
     run_training(n_epochs, ae, model_name, train_loader, val_loader,
                  opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
 
+    # EVALUATION ---------------------------------------------------------
     # Evaluate on the final models saved during training
     ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + model_name + ".pth")
     ae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "dec_" + model_name + ".pth")
@@ -139,8 +182,24 @@ if __name__ == "__main__":
     ae_enc.load_state_dict(torch.load(ae_enc_model_path, map_location=DEVICE))
     ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
 
-    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, ae, DEVICE)
+    staging_mse, reconstruction_mse = evaluation.evaluate_autoencoder(val_loader, ae, DEVICE)
     reconstruction_mse = reconstruction_mse.cpu()
 
-    print("Staging MSE of trained AE on validation set:", staging_mse)
+    print("Staging RMSE of trained AE on validation set:", staging_mse)
     print("Reconstruction MSE of trained AE on validation set:", reconstruction_mse)
+
+    # Compute subtype accuracy
+    subtype_accuracy = compute_subtype_accuracy_with_cluster_mapping(ae, dataset_names)
+    print("Subtype accuracy:", subtype_accuracy)
+
+    # Visualise stage predictions against ground truth
+    fig, ax = predicted_stage_comparison(train_loader, num_biomarkers, ae, DEVICE)
+    fig.show()
+
+    # Visualise the training set encoded in the latent space
+    fig, ax = plot_dataset_in_latent_space(net=ae, dataset_names=dataset_names)
+    fig.show()
+
+    plt.show()
+
+

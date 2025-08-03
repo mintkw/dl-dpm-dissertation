@@ -57,8 +57,12 @@ class Decoder(nn.Module):
 
 class VAE(AutoEncoder):
     def __init__(self, enc, dec):
+        super().__init__()
         self.enc = enc
         self.dec = dec
+
+    def encode(self, X):
+        return self.enc(X).sample()
 
     def predict_stage(self, X):
         uncorrected_stage = self.predict_uncorrected_stage(X)
@@ -67,11 +71,8 @@ class VAE(AutoEncoder):
     def predict_uncorrected_stage(self, X):
         return self.enc(X).mean
 
-    def decode_latent(self, X):
-        return self.dec(X).sample()  # or mean...?
-
-    def reconstruct_input(self, X):
-        return self.dec(self.enc(X).sample()).sample()
+    def decode_latent(self, z):
+        return self.dec(z).sample()  # or mean...?
 
     # def automatically_set_latent_direction(self, dataloader):
     #     with torch.no_grad():
@@ -102,7 +103,7 @@ def compute_elbo(vae, X, device, beta):
     epsilon = dist.Normal(0, 1).sample(q_z.mean.shape).to(device)  # not sure if this is right lol
     z = q_z.mean + epsilon * torch.sqrt(q_z.variance)
 
-    # KL divergence between posterior approximation and prior, where the prior is a standard normal
+    # KL divergence between posterior approximation and prior, analytically computed since both are Gaussian
     prior_mean = torch.zeros(1).to(device) + 0.5
     prior_variance = torch.ones(1).to(device)
     kl_div = 0.5 * (torch.log(prior_variance) - torch.log(q_z.variance) +

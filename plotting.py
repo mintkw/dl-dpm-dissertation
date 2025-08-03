@@ -12,14 +12,14 @@ def staged_biomarker_plots(dataloader, net, device):
     preds = []
 
     # Get number of biomarkers
-    example, _ = next(iter(dataloader))
-    num_biomarkers_to_plot = min(15, example.shape[1])
+    n_biomarkers = next(iter(dataloader))[0].shape[1]
+    num_biomarkers_to_plot = min(15, n_biomarkers)
 
     # Get data and corresponding predictions
     with torch.no_grad():
         for data, label in dataloader:
             X.append(data.cpu())
-            preds.append(net.encode(data))
+            preds.append(net.predict_stage(data) * n_biomarkers)  # Scale up stage to match ground truth scale
 
     X = torch.concatenate(X).squeeze()
     preds = torch.concatenate(preds).squeeze().cpu()
@@ -55,7 +55,7 @@ def mean_data_against_discretised_stage(dataloader, net, device):
     # Get data and corresponding predictions
     with torch.no_grad():
         for X, label in dataloader:
-            preds = net.encode(X)
+            preds = net.predict_stage(X)
 
             # Translate and group preds into 0, 1, ..., n_biomarkers
             preds_int = torch.round(preds * n_biomarkers).int()
@@ -66,6 +66,10 @@ def mean_data_against_discretised_stage(dataloader, net, device):
 
     mean_X_per_stage = np.zeros((n_biomarkers + 1, n_biomarkers))
     for stage in range(n_biomarkers + 1):
+        # Skip if no data has been recorded with this predicted stage
+        if len(X_per_stage[stage]) == 0:
+            continue
+        print(np.array(X_per_stage[stage]).shape)
         mean_X_per_stage[stage] = np.array(X_per_stage[stage]).mean(axis=0)
     mean_X_per_stage = np.array(mean_X_per_stage)
 
@@ -128,7 +132,7 @@ def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
     with torch.no_grad():
         for data, label in dataloader:
             labels.append(label.cpu())
-            preds.append(net.encode(data))
+            preds.append(net.predict_stage(data))
 
     labels = torch.concatenate(labels).squeeze().cpu() / num_biomarkers
     preds = torch.concatenate(preds).squeeze().cpu()
