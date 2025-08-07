@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 
 import plotting
+from config import DEVICE
 
 
 def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
@@ -20,7 +21,7 @@ def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
 
     for X, _ in dataloader:
         X = X.to(device)
-        pred = net.encode(X)
+        pred = net.predict_stage(X)
 
         # consider measurements predicted to be within stages 0 to 3 and num_biomarkers - 3 to num_biomarkers?
         idx_within_start = torch.where(pred < 5 / num_biomarkers)[0]  # extract single tensor from tuple
@@ -49,7 +50,7 @@ def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
 
     for X, labels in dataloader:
         X = X.to(device)
-        pred = net.encode(X)
+        pred = net.predict_stage(X)
 
         # Scale X using prediction and start/end.
         # first flip around the midpoints so start < end
@@ -69,6 +70,46 @@ def stages_to_sequence_direct(num_biomarkers, dataloader, net, device):
 
 def sigmoid(x, a, b, c, d):
     return a / (1 + torch.exp(-50 * b * (x - c))) + d
+
+
+def stages_to_sequence_window(dataloader, net):
+    n_biomarkers = next(iter(dataloader))[0].shape[1]
+    # onset_times = [[] for _ in range(n_biomarkers)]
+
+    counts = torch.zeros(n_biomarkers, device=DEVICE)  # number of measurements per biomarker that have fallen in a window of 0.5 so far
+    mean_onset_times = torch.zeros(n_biomarkers, device=DEVICE)
+    delta = 0.1
+
+    with torch.no_grad():
+        for X, _ in dataloader:
+            preds = net.predict_stage(X)
+
+            # Get the predicted stage of observation data within a window of 0.5 (i.e. +- delta)
+            # for i in range(X.shape[1]):
+            #     if (torch.abs(X[:, i] - 0.5) <= delta).sum() > 0:
+            #         onset_times[i].append(preds[torch.abs(X[:, i] - 0.5) <= delta])
+
+            # # try 2
+            # for i in range(X.shape[1]):
+            #     onset_times[i].append(preds[torch.abs(X[:, i] - 0.5) <= delta])
+
+            # # try 3
+            preds = preds.squeeze()
+            prev_counts = counts.detach().clone()
+            counts += torch.sum(torch.abs(X - 0.5) <= delta, dim=0)
+            obs_idx = torch.where(torch.abs(X - 0.5) <= delta)  # Sets of X indices where X ~= 0.5
+            preds_to_consider = torch.zeros(X.shape, device=DEVICE)  # elem (j, i) stores prediction j iff X[j, i] ~= 0.5
+            preds_to_consider[obs_idx] = preds[obs_idx[0]]
+            idx_to_adjust = torch.unique(obs_idx[1])  # indices of biomarkers whose counts need adjusting
+            mean_onset_times[idx_to_adjust] = (mean_onset_times[idx_to_adjust] * prev_counts[idx_to_adjust] +
+                                               torch.sum(preds_to_consider, dim=0)[idx_to_adjust]) / counts[idx_to_adjust]
+
+    # # Average the onset times for each biomarker
+    # mean_onset_times = torch.zeros(n_biomarkers)
+    # for i in range(n_biomarkers):
+    #     mean_onset_times[i] = torch.concatenate(onset_times[i]).mean()
+
+    return torch.argsort(mean_onset_times)
 
 
 def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
@@ -91,7 +132,7 @@ def fit_biomarker_curves(dataloader, net, n_epochs, device, lr=0.01):
         overall_loss = 0
         for data, _ in dataloader:
             data = data.to(device)
-            pred = net.encode(data)
+            pred = net.predict_stage(data)
 
             opt.zero_grad()
 
