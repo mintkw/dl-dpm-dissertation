@@ -21,7 +21,7 @@ if __name__ == "__main__":
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
 
-    dataset_type = "synthetic"  # only 'synthetic' or 'adni' supported currently
+    dataset_type = "adni"  # only 'synthetic' or 'adni' supported currently
     if dataset_type not in ["synthetic", "adni"]:
         print("Dataset type must be one of 'synthetic' or 'adni' (case-sensitive)")
         exit()

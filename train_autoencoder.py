@@ -106,10 +106,10 @@ if __name__ == "__main__":
     elif dataset_type == "adni":
         dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=ADNIMERGE_DIR)
 
-    # EXPERIMENT SMALL TOY DATASET FOR NOW --------------------------
-    toy_indices = train_test_split(range(len(dataset)), train_size=0.1)[0]
-    dataset = torch.utils.data.Subset(dataset, toy_indices)
-    # EXPERIMENT END -------------------------------------------------
+    # # EXPERIMENT SMALL TOY DATASET FOR NOW --------------------------
+    # toy_indices = train_test_split(range(len(dataset)), train_size=0.2)[0]
+    # dataset = torch.utils.data.Subset(dataset, toy_indices)
+    # # EXPERIMENT END -------------------------------------------------
 
     # Split training set
     train_indices, val_indices = train_test_split(range(len(dataset)), train_size=0.8)

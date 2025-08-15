@@ -173,6 +173,10 @@ def predicted_biomarker_trajectories(num_biomarkers, net, device):
             print("net should be a VAE or AE object")
             return
 
+    # If the learned pseudotime scale is "reversed", then flip it
+    latent_dir = net.enc.latent_dir.item()
+    t = torch.linspace(1 - latent_dir, latent_dir, 100).to(device)
+
     t = t.cpu()
     preds = preds.cpu()
     sigma = sigma.cpu()

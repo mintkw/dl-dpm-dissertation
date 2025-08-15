@@ -5,7 +5,7 @@ import pandas
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
-# import statsmodels.formula.api as smf
+import statsmodels.formula.api as smf
 
 from config import ADNIMERGE_DIR
 
@@ -44,6 +44,42 @@ if __name__ == "__main__":
 
     # Replace any screening visit codes with baseline
     data_adnimerge['VISCODE'] = data_adnimerge['VISCODE'].replace('m0', 'bl')
+
+    # Compute amyloid-beta positive or negative labels for each datapoint by fitting a mixture model.
+    # Look at CSF Abeta
+    data_abeta = data_adnimerge['ABETA'].to_numpy()
+    has_abeta = ~np.isnan(data_abeta)
+    data_abeta = data_abeta[has_abeta]
+    gm = GaussianMixture(n_components=2).fit_predict(data_abeta.reshape(-1, 1))
+
+    if np.mean(data_abeta[gm == 0]) < np.mean(data_abeta[gm == 1]):
+        gm = 1 - gm
+
+    is_positive = np.nan * np.ones(data_adnimerge.shape[0])
+    is_positive[has_abeta] = gm
+
+    overall_positive = np.nan * np.ones(data_adnimerge.shape[0])
+    overall_positive[is_positive == 1] = 1
+    overall_positive[is_positive == 0] = 0
+
+    # Look at Amyloid PET
+    for abeta_col in ["PIB", "AV45", "FBB"]:
+        data_abeta = data_adnimerge['PIB'].to_numpy()
+        has_abeta = ~np.isnan(data_abeta)
+        data_abeta = data_abeta[has_abeta]
+        gm = GaussianMixture(n_components=2).fit_predict(data_abeta.reshape(-1, 1))
+
+        if np.mean(data_abeta[gm == 0]) > np.mean(data_abeta[gm == 1]):
+            gm = 1 - gm
+
+        is_positive = np.nan * np.ones(data_adnimerge.shape[0])
+        is_positive[has_abeta] = gm
+
+        overall_positive[is_positive == 1] = 1
+        overall_positive[is_positive == 0] = 0
+
+    # Add amyloid-positive column to the dataframe
+    data_adnimerge['ABpos'] = overall_positive
 
     # READ IN ADNI 1, 2, AND 3 VOLUMETRIC DATA -----------------------------------------------
     data_fs43_adni1 = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "UCSFFSX_11_02_15.csv"))
@@ -177,13 +213,14 @@ if __name__ == "__main__":
     data['Fusiform'] = data['Fusiform_x'].copy()
 
     # Select data for study
-    data = data[['MMSE', 'APOE4',
+    data = data[['RID', 'VISCODE', 'EXAMDATE', 'Years_bl',
+                 'AGE', 'PTGENDER', 'PTEDUCAT', 'DX', 'MMSE', 'APOE4', 'ABpos',
                  'FDG', 'PIB', 'AV45', 'FBB', 'ABETA', 'TAU', 'PTAU',
-                 'ICV', 'DX',
+                 'OVERALLQC', 'ICV', 'FSVERSION',
                  'Frontal', 'Parietal', 'Temporal',
                  'Occipital', 'Cingulate', 'Insula',
                  'Accumbens', 'Amygdala', 'Caudate', 'Hippocampus',
-                 'Pallidum', 'Putamen', 'Thalamus']]  # removed 'ABpos', identifying data, and diagnosis info, which we do not use.
+                 'Pallidum', 'Putamen', 'Thalamus']]
 
     regions = ['Frontal', 'Parietal', 'Temporal',
                'Occipital', 'Cingulate', 'Insula',
@@ -196,17 +233,15 @@ if __name__ == "__main__":
     # Keep only rows with ICV within 5 standard deviations of the mean
     data = data.loc[np.abs(data['ICV'] - np.mean(data['ICV']) <= 5 * np.std(data['ICV']))]
 
-    # todo: below is for an experiment - keeping only what i think is volumetric data, and 'DX' for stratified split.
-    data = data.loc[:, regions + ['ICV', 'DX']]
+    # Add additional columns 'FS4', 'FS5', and 'FS6' that are boolean types indicating the FreeSurfer version.
+    data['FS4'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (FreeSurfer Version 4.3)'
+    data['FS5'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (5.1)'
+    data['FS6'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (6.0)'
 
-
-    # # Create a new column 'DX_num' that holds 0, 1, or 2 for CN, MCI, Dementia respectively (as stored in column 'DX').
+    # Create 3 new columns to one-hot encode CN, MCI, Dementia (as stored in column 'DX').
     data['CN'] = (data['DX'] == 'CN').astype(int)
     data['MCI'] = (data['DX'] == 'MCI').astype(int)
     data['AD'] = (data['DX'] == 'Dementia').astype(int)
-    # data.loc[data['DX'] == 'CN', 'CN'] = 0
-    # data.loc[data['DX'] == 'MCI', 'DX_num'] = 1
-    # data.loc[data['DX'] == 'Dementia', 'DX_num'] = 2
 
     # Drop rows that are missing data for any of the following columns
     biomarkers = ['Frontal', 'Parietal', 'Temporal', 'Amygdala', 'Hippocampus', 'ICV']
@@ -218,7 +253,7 @@ if __name__ == "__main__":
     # # Replacement: drop rows that are missing data for any field.
     # data = data.loc[np.all(~np.isnan(data), axis=1)]
 
-    # # PROVISIONAL - DATA TRANSFORMATIONS --------------------------------------------------------
+    # # DATA TRANSFORMATIONS --------------------------------------------------------
     # is_control = (data['DX'] == 'CN') & (data['ABpos'] == 0) & (data['VISCODE'] == 'bl')
     #
     # # make a copy of our dataframe (we don't want to overwrite our original data)
@@ -240,13 +275,24 @@ if __name__ == "__main__":
     #     # save zscore back into our new (copied) dataframe
     #     # multiplied by -1 for use with SuStaIn
     #     zdata.loc[:, region] = -w_score
-    # ------------------------------------------------------------------------------------
+    #
+    # data = zdata  # We only need the transformed data.
+    # # ------------------------------------------------------------------------------------
+
+    # EXPERIMENT: Z SCORE TRANSFORMATIONS ---------------------------------------------------
+    zdata = pandas.DataFrame(data, copy=True)
+    # print(np.mean(zdata.loc[:, regions], axis=1).shape)
+    # print(np.std(zdata.loc[:, regions], axis=1).shape)
+    print(data.loc[:, regions].shape)
+    for region in regions:
+        zdata.loc[:, region] = -(zdata.loc[:, region] - np.mean(zdata.loc[:, region])) / np.std(zdata.loc[:, region])
+    data = zdata
+    # ---------------------------------------------------------------------------------------
+
+    # todo: below is for an experiment - keeping only what i believe is volumetric data, and diagnosis for stratified split.
+    data = data.loc[:, regions + ['CN', 'MCI', 'AD']]
 
     # Split the dataset into training and testing sets.
-    # CN_data = data[data['DX'] == 'CN']
-    # MCI_data = data[data['DX'] == 'MCI']
-    # AD_data = data[data['DX'] == 'Dementia']
-    data = data.drop(columns=['DX'])
     CN_data = data[data['CN'] == 1]
     MCI_data = data[data['MCI'] == 1]
     AD_data = data[data['AD'] == 1]
@@ -269,13 +315,20 @@ if __name__ == "__main__":
                                ],
                               ignore_index=True)
 
-    print(train_data.shape, test_data.shape, data.shape)
+    # print(train_data.shape, test_data.shape, data.shape)
 
     # Save the longitudinal data to a spreadsheet.
     # print(data.shape)
     print(data.columns.tolist())
     train_data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_train.csv"), index=False)
     test_data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_test.csv"), index=False)
+
+    # print(np.mean(zdata.loc[is_control, regions].values, axis=0))
+    # print(np.min(zdata.loc[is_control, regions].values, axis=0), np.max(zdata.loc[is_control, regions].values, axis=0))
+    print(np.mean(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
+    print(np.min(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
+    print(np.mean(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
+    print(np.min(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
 
     # data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_raw.csv"), index=False)
     # zdata.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data.csv"), index=False)

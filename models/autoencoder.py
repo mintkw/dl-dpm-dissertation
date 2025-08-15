@@ -45,6 +45,10 @@ class AutoEncoder(abc.ABC):
             dataset_size = len(dataloader.dataset)
 
             for X, _ in dataloader:
+                # This fails for batches of 1, so skip the last batch if it has only one datapoint.
+                if X.shape[0] < 2:
+                    continue
+
                 uncorrected_latents = self.predict_uncorrected_stage(X)
 
                 # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
