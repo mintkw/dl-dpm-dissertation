@@ -18,7 +18,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.d_latent = d_latent
         self.net = nn.Sequential(nn.Linear(d_in, 16),
-                                 nn.ReLU(),
+                                 nn.Sigmoid(),
                                  nn.Linear(16, d_latent),
                                  nn.Sigmoid())
         self.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False))  # 1 for ascending latent (0 is control and 1 is patient), 0 for descending
@@ -34,7 +34,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.d_latent = d_latent
         self.net = nn.Sequential(nn.Linear(self.d_latent, 16),
-                                 nn.ReLU())
+                                 nn.Sigmoid())
 
         self.fc = nn.Linear(16, d_out)
 

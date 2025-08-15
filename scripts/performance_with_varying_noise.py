@@ -14,7 +14,7 @@ from train_autoencoder import run_training
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from models import ae_stager, vae_stager
 from evaluation import evaluate_autoencoder
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
 
 
 if __name__ == "__main__":
@@ -63,8 +63,8 @@ if __name__ == "__main__":
                 train_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                                 label_directory=SIMULATED_LABEL_TRAIN_DIR)
                 train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
-                val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR,
-                                              label_directory=SIMULATED_LABEL_VAL_DIR)
+                val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
+                                              label_directory=SIMULATED_LABEL_TEST_DIR)
                 val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
                 n_epochs = 1000
@@ -83,7 +83,8 @@ if __name__ == "__main__":
 
                 # Run training loop
                 start_time = time.time()
-                run_training(n_epochs, vae, dataset_name, train_loader, opt_vae, vae_stager.vae_criterion, model_type="vae",
+                run_training(n_epochs, vae, dataset_name, train_loader, val_loader,
+                             opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
                 times_taken_to_fit_vae[-1] += time_taken / n_trials

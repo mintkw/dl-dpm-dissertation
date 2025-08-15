@@ -100,11 +100,10 @@ def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None, gt_order=None
     else:
         plotting_order = np.array(gt_order)
 
-
     n_biomarkers = plotting_order.shape[0]
     if score_names is None:
         score_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
-    all_orders = [x.ordering for x in mcmc_samples]
+    all_orders = [x.ordering for x in mcmc_samples]  # (num_samples, num_biomarkers)
     all_orders = np.array(all_orders)
     confusion_mat = np.zeros((n_biomarkers, n_biomarkers))
     for i in range(n_biomarkers):
@@ -118,8 +117,8 @@ def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None, gt_order=None
         stp = 2
     else:
         stp = 1
-    tick_marks_x = np.arange(0,n_biomarkers,stp)
-    labs = range(1, n_biomarkers+1,stp)
+    tick_marks_x = np.arange(0, n_biomarkers, stp)
+    labs = range(1, n_biomarkers+1, stp)
     ax.set_xticks(tick_marks_x)
     ax.set_xticklabels(labs, rotation=0)
     tick_marks_y = np.arange(n_biomarkers)

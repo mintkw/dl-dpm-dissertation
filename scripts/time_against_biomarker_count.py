@@ -15,14 +15,14 @@ from train_autoencoder import run_training
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from models import ae_stager, vae_stager
 from evaluation import evaluate_autoencoder
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
 
 
 if __name__ == "__main__":
     # Generate sets of data with varying sizes
     # n_biomarkers_all = [i for i in range(50, 505, 50)]
-    n_biomarkers_all = [i for i in range(10, 40, 10)]
-    # n_biomarkers_all = [10, 50, 100, 250, 500]
+    # n_biomarkers_all = [i for i in range(10, 40, 10)]
+    n_biomarkers_all = [10, 50, 100, 250, 500]
 
     # Define dataset names
     dataset_names = [f"synthetic_{12 * n_biomarkers}_{n_biomarkers}_0" for n_biomarkers in n_biomarkers_all]
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     staging_errors_ae = []
 
     # Number of trials to run on each dataset size, to later be averaged over
-    n_trials = 5
+    n_trials = 1
 
     # Write out results to file in case training is interrupted
     with open('../dataset_size_comparison_results.csv', 'w', newline='') as output_f:
@@ -66,8 +66,8 @@ if __name__ == "__main__":
                 train_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                                 label_directory=SIMULATED_LABEL_TRAIN_DIR)
                 train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
-                val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_VAL_DIR,
-                                              label_directory=SIMULATED_LABEL_VAL_DIR)
+                val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
+                                              label_directory=SIMULATED_LABEL_TEST_DIR)
                 val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
                 n_epochs = 1000
@@ -87,7 +87,7 @@ if __name__ == "__main__":
                 # Run training loop
                 start_time = time.time()
                 run_training(n_epochs, vae, dataset_name, train_loader, val_loader,
-                             opt_vae, vae_stager.vae_criterion, model_type="vae",
+                             opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
                              device=DEVICE)
                 time_taken = time.time() - start_time  # in seconds
                 time_taken_vae[-1][trial] = time_taken
@@ -105,7 +105,6 @@ if __name__ == "__main__":
                 time_taken = time.time() - start_time  # in seconds
                 time_taken_vae[-1][trial] += time_taken
 
-                reconstruction_mse = reconstruction_mse.cpu()
                 reconstruction_errors_vae[-1][trial] = reconstruction_mse.cpu()
                 staging_errors_vae[-1][trial] = staging_mse.cpu()
 
@@ -138,7 +137,6 @@ if __name__ == "__main__":
                 time_taken = time.time() - start_time  # in seconds
                 time_taken_ae[-1][trial] += time_taken
 
-                reconstruction_mse = reconstruction_mse.cpu()
                 reconstruction_errors_ae[-1][trial] = reconstruction_mse.cpu()
                 staging_errors_ae[-1][trial] = staging_mse.cpu()
 

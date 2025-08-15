@@ -2,7 +2,7 @@ from datasets import simulateDPMdata, simulateEBMdata
 import numpy as np
 import os
 import json
-from config import SIMULATED_OBS_VAL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR, ROOT_DIR
+from config import SIMULATED_OBS_TEST_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, ROOT_DIR
 
 
 def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, means_normal=None, means_abnormal=None,
@@ -24,9 +24,9 @@ def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_se
 
     os.chdir(ROOT_DIR)
     os.makedirs(SIMULATED_OBS_TRAIN_DIR, exist_ok=True)
-    os.makedirs(SIMULATED_OBS_VAL_DIR, exist_ok=True)
+    os.makedirs(SIMULATED_OBS_TEST_DIR, exist_ok=True)
     os.makedirs(SIMULATED_LABEL_TRAIN_DIR, exist_ok=True)
-    os.makedirs(SIMULATED_LABEL_VAL_DIR, exist_ok=True)
+    os.makedirs(SIMULATED_LABEL_TEST_DIR, exist_ok=True)
 
     # generate num_sets of datasets with their own sequences.
     for i in range(num_sets):
@@ -34,8 +34,8 @@ def generate_normalised_data(n_biomarkers, n_mci, n_controls, n_patients, num_se
         seq = np.arange(n_biomarkers)[:, None]
         seq = np.random.permutation(seq).tolist()
 
-        obs_directories = [SIMULATED_OBS_VAL_DIR, SIMULATED_OBS_TRAIN_DIR]
-        label_directories = [SIMULATED_LABEL_VAL_DIR, SIMULATED_LABEL_TRAIN_DIR]
+        obs_directories = [SIMULATED_OBS_TEST_DIR, SIMULATED_OBS_TRAIN_DIR]
+        label_directories = [SIMULATED_LABEL_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR]
 
         # for the DPM setting, generate a train dataset, then a val dataset
         for set in range(2):

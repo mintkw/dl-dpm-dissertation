@@ -8,7 +8,7 @@ from tqdm import tqdm
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR, DEVICE, SAVED_MODEL_DIR
+from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TEST_DIR, DEVICE, SAVED_MODEL_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 # from train_autoencoder import run_training
@@ -28,7 +28,8 @@ class Encoder(nn.Module):
         self.net = nn.Sequential(nn.Linear(self.n_biomarkers, 16),
                                  nn.ReLU())
 
-        self.fc_mu = nn.Linear(16, self.n_subtypes)  # mu_phi(x, y). one output for each y class (subtype)
+        # self.fc_mu = nn.Linear(16, self.n_subtypes)  # mu_phi(x, y). one output for each y class (subtype)
+        self.fc_mu = nn.Linear(16, 1)
         self.fc_log_var = nn.Linear(16, 1)  # sigma^2_phi(x)
         self.fc_pi = nn.Linear(16, self.n_subtypes)  # pi_phi(x)
 
@@ -45,19 +46,21 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, d_out, d_in, n_subtypes):
+    def __init__(self, d_out, d_z, n_subtypes):
         super().__init__()
-        self.d_in = d_in  # dim_y + dim_z. Input vector should be in that order too
+        self.d_z = d_z  # dimensionality of z (stage), expected to be 1
         self.d_out = d_out
-        # self.n_subtypes = n_subtypes
+        self.n_subtypes = n_subtypes
 
-        self.net = nn.Sequential(nn.Linear(self.d_in, 16),
+        self.net = nn.Sequential(nn.Linear(self.d_z + self.n_subtypes, 16),
                                  nn.ReLU())
 
         self.fc_mu = nn.Linear(16, self.d_out)  # mu_theta(z, y)
         self.fc_log_var = nn.Linear(16, self.d_out)  # sigma^2_theta(z, y)
 
     def forward(self, Z):
+        # Expects Z to be z, y concatenated in that order.
+
         h = self.net(Z)
         mu = self.fc_mu(h)
         var = torch.exp(self.fc_log_var(h))  # enforce non-negativity
@@ -71,19 +74,25 @@ class VAE(vae_stager.VAE):
 
     def encode(self, X):
         mu, var, pi = self.enc(X)
-        y_sample = dist.Categorical(pi).sample()  # shape (batch_size,)
-        mu = mu[torch.arange(mu.shape[0]), y_sample]  # select each mean based on the sampled y
-        z_sample = dist.Normal(mu, var.squeeze(1)).sample()  # shape (batch_size,)
+        y_idx_sample = dist.Categorical(pi).sample()  # shape (batch_size,)
+        # mu = mu[torch.arange(mu.shape[0]), y_idx_sample]  # select each mean based on the sampled y
+        z_sample = dist.Normal(mu, var).sample()  # shape (batch_size,)
 
-        return torch.concatenate([y_sample.unsqueeze(1), z_sample.unsqueeze(1)], dim=-1)
+        # Expand y into a one-hot vector
+        y_sample = torch.zeros(pi.shape, device=DEVICE)
+        y_sample[torch.arange(pi.shape[0]), y_idx_sample] = 1.
+
+        return torch.concatenate([z_sample, y_sample], dim=-1)
 
     def predict_uncorrected_stage(self, X):
         mu, var, pi = self.enc(X)
         y = torch.argmax(pi, dim=-1)  # shape (batch_size,)
 
-        stages = mu[torch.arange(X.shape[0]), y]
+        return mu
 
-        return stages.unsqueeze(1)
+        # stages = mu[torch.arange(X.shape[0]), y]
+
+        # return stages.unsqueeze(1)
 
     def predict_stage(self, X):
         uncorrected_stage = self.predict_uncorrected_stage(X)
@@ -114,15 +123,25 @@ def compute_elbo(vae, X, device, beta):
     n_subtypes = q_pi.shape[1]
     batch_size = X.shape[0]
 
-    y = torch.arange(n_subtypes, device=DEVICE)  # shape: (n_subtypes,)
+    # y = torch.arange(n_subtypes, device=DEVICE)  # shape: (n_subtypes,)
+    y = torch.eye(n_subtypes, device=DEVICE)
 
     # term 1: Expectation over q_phi(z|x,y) of log p_theta(x|y,z). Calculated with the reparametrisation trick
     epsilon = dist.Normal(0, 1).sample(q_mu.shape).to(device)
-    z = q_mu + epsilon * torch.sqrt(q_var)  # transformed from epsilon (batch_size, n_subtypes)
-    decoder_input = torch.concatenate([y.repeat((batch_size, 1)).unsqueeze(-1), z.unsqueeze(-1)], dim=-1)  # (batch_size, n_subtypes, 2)
+
+    z = q_mu + epsilon * torch.sqrt(q_var)  # transformed from epsilon (batch_size, 1)
+    decoder_input = torch.concatenate([z.repeat(1, n_subtypes).unsqueeze(-1), y.repeat((batch_size, 1, 1))],
+                                      dim=-1)  # (batch_size, n_subtypes, 1 + n_subtypes)
     p_mu, p_var = vae.dec(decoder_input)
     posterior_over_x = dist.Normal(p_mu, p_var)
-    log_px_given_yz = posterior_over_x.log_prob(X.unsqueeze(1).repeat(1, n_subtypes, 1)).sum(-1)  # expected shape: (batch_size, n_subtypes, 1)
+    log_px_given_yz = posterior_over_x.log_prob(X.unsqueeze(1).repeat(1, n_subtypes, 1)).sum(
+        -1)  # expected shape: (batch_size, n_subtypes, 1)
+
+    # z = q_mu + epsilon * torch.sqrt(q_var)  # transformed from epsilon (batch_size, n_subtypes)
+    # decoder_input = torch.concatenate([z.unsqueeze(-1), y.repeat((batch_size, 1, 1))], dim=-1)  # (batch_size, n_subtypes, 1 + n_subtypes)
+    # p_mu, p_var = vae.dec(decoder_input)
+    # posterior_over_x = dist.Normal(p_mu, p_var)
+    # log_px_given_yz = posterior_over_x.log_prob(X.unsqueeze(1).repeat(1, n_subtypes, 1)).sum(-1)  # expected shape: (batch_size, n_subtypes, 1)
 
     # term 2: log p(y). The prior is uniform.
     log_py = torch.log(torch.ones(X.shape[0], n_subtypes, device=DEVICE) / n_subtypes)  # expected shape: (batch_size, n_subtypes)
@@ -132,6 +151,7 @@ def compute_elbo(vae, X, device, beta):
     prior_variance = torch.ones(1).to(device)
     kl_div = 0.5 * (torch.log(prior_variance) - torch.log(q_var) +
                     (q_var + (q_mu - prior_mean) ** 2) / prior_variance - 1)  # expected shape: (batch_size, n_subtypes)
+    kl_div = kl_div.repeat(1, n_subtypes)
 
     # term 4: log q_phi(y | x)
     log_qy_given_x = torch.log(q_pi)  # expected shape: (batch_size, n_subtypes)
@@ -157,63 +177,6 @@ def vae_criterion_wrapper(beta=1):
         return loss
 
     return vae_criterion
-
-
-# def compute_subtype_accuracy(net, dataset_names):
-#     """
-#     Computes subtype accuracy (clustering accuracy) on a validation set
-#     using the evaluation protocol of Makhzani et al. (2015).
-#
-#     Args:
-#         net:
-#         dataset_names:
-#
-#     Returns:
-#
-#     """
-#     n_subtypes = len(dataset_names)
-#
-#     # Load the data from each subtype individually
-#     val_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
-#                                         obs_directory=SIMULATED_OBS_VAL_DIR,
-#                                         label_directory=SIMULATED_LABEL_VAL_DIR) for dataset_name in dataset_names]
-#     val_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in val_datasets]
-#
-#     max_probs = torch.zeros(n_subtypes, device=DEVICE)  # elem i holds max_n{q(y=i|x_n)}
-#     cluster_mapping = torch.arange(n_subtypes, device=DEVICE)  # elem i holds the mapping from model cluster index (y_i) to dataset subtype index
-#
-#     subtype_accuracy = 0.0
-#     subtype_preds = []
-#     gt_preds = []
-#     with torch.no_grad():
-#         # Pass through the dataset to compute max_probs and cluster_mapping
-#         for i in range(len(dataset_names)):
-#             val_loader = val_loaders[i]
-#
-#             for X, y in val_loader:
-#                 _, _, q_pi = net.enc(X)
-#
-#                 # Update max probabilities per class
-#                 max_probs, indices = torch.max(torch.row_stack([max_probs, q_pi]), dim=0)
-#
-#                 # Update cluster mapping where indices != 0
-#                 cluster_mapping[indices != 0] = i
-#
-#                 subtype_preds.append(net.predict_subtype(X))
-#                 gt_preds.append(torch.tensor([i for _ in range(X.shape[0])], device=DEVICE))
-#
-#         subtype_preds = torch.concatenate(subtype_preds, dim=-1)
-#         gt_preds = torch.concatenate(gt_preds, dim=-1)
-#
-#     # print(max_probs, cluster_mapping)
-#
-#     mapped_subtype_preds = subtype_preds
-#     for i in range(n_subtypes):
-#         mapped_subtype_preds[subtype_preds == i] = cluster_mapping[i]
-#
-#     subtype_accuracy = torch.sum(mapped_subtype_preds == gt_preds) / torch.numel(mapped_subtype_preds)
-#
-#     return subtype_accuracy
 
 
 def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser, criterion, model_type, device):
@@ -292,7 +255,7 @@ if __name__ == "__main__":
     train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
-    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]
@@ -302,7 +265,7 @@ if __name__ == "__main__":
     # ---------- Train VAE -----------
     # Define network
     vae_enc = Encoder(n_biomarkers=num_biomarkers, d_latent=1, n_subtypes=num_sets).to(DEVICE)
-    vae_dec = Decoder(d_out=num_biomarkers, d_in=2, n_subtypes=num_sets).to(DEVICE)
+    vae_dec = Decoder(d_out=num_biomarkers, d_z=1, n_subtypes=num_sets).to(DEVICE)
 
     vae = VAE(enc=vae_enc, dec=vae_dec)
 
@@ -340,3 +303,7 @@ if __name__ == "__main__":
 
     fig.show()
     plt.show()
+
+
+    for X, y in val_loader:
+        print(torch.column_stack([vae.enc(X)[2], y]))  # q(y|x), true stage label

@@ -21,7 +21,7 @@ class Encoder(nn.Module):
         self.d_latent = d_latent
 
         self.net = nn.Sequential(nn.Linear(d_in, 16),
-                                 nn.ReLU())
+                                 nn.Sigmoid())
 
         self.fc_mu = nn.Linear(16, d_latent)
         self.fc_sigma = nn.Linear(16, d_latent)
@@ -42,7 +42,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.d_latent = d_latent
         self.net = nn.Sequential(nn.Linear(self.d_latent, 16),
-                                 nn.ReLU())
+                                 nn.Sigmoid())
 
         self.fc_mu = nn.Linear(16, d_out)
         self.fc_sigma = nn.Linear(16, d_out)

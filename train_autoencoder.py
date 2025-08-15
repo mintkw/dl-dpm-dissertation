@@ -3,8 +3,9 @@ import os
 import torch
 import itertools
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNIMERGE_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from evaluation import evaluate_autoencoder
 
@@ -79,68 +80,92 @@ def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser,
 
 
 if __name__ == "__main__":
-    num_sets = 1
-    dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
-    model_name = "synthetic_120_10_0"
+    # USER CONFIGURATION --------------------
+    # num_sets = 1
+    # dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
+    # model_name = "synthetic_120_10_0"
+    dataset_names = ["adni_longitudinal_data_train"]
+    model_name = dataset_names[0]
 
-    train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
+    model_type = "ae"  # only vae or ae supported currently
+    if model_type not in ["vae", "ae"]:
+        print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
+        exit()
 
-    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
-    val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
+    dataset_type = "adni"  # only 'synthetic' or 'adni' supported currently
+    if dataset_type not in ["synthetic", "adni"]:
+        print("Dataset type must be one of 'synthetic' or 'adni' (case-sensitive)")
+        exit()
+    # ---------------------------------------
+
+    # Load data
+    dataset = None
+    if dataset_type == "synthetic":
+        dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                      label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    elif dataset_type == "adni":
+        dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=ADNIMERGE_DIR)
+
+    # EXPERIMENT SMALL TOY DATASET FOR NOW --------------------------
+    toy_indices = train_test_split(range(len(dataset)), train_size=0.1)[0]
+    dataset = torch.utils.data.Subset(dataset, toy_indices)
+    # EXPERIMENT END -------------------------------------------------
+
+    # Split training set
+    train_indices, val_indices = train_test_split(range(len(dataset)), train_size=0.8)
+
+    # Generate subset based on indices
+    train_split = torch.utils.data.Subset(dataset, train_indices)
+    val_split = torch.utils.data.Subset(dataset, val_indices)
+
+    # Create dataloader
+    train_loader = torch.utils.data.DataLoader(train_split, batch_size=8, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_split, batch_size=8)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]
 
     n_epochs = 1000
 
-    # ---------- Train VAE -----------
-    # Define network
-    vae_enc = vae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    vae_dec = vae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
+    # Instantiate network
+    enc = None
+    dec = None
 
-    vae = vae_stager.VAE(enc=vae_enc, dec=vae_dec)
+    if model_type == "vae":
+        enc = vae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
+        dec = vae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
 
-    # Define optimiser
-    opt_vae = torch.optim.Adam(itertools.chain(vae_enc.parameters(), vae_dec.parameters()), lr=0.001)
+        net = vae_stager.VAE(enc=enc, dec=dec)
+        criterion = vae_stager.vae_criterion_wrapper(beta=1)
 
-    # Run training loop
-    run_training(n_epochs, vae, model_name, train_loader, val_loader, opt_vae,
-                 vae_stager.vae_criterion_wrapper(beta=1), model_type="vae", device=DEVICE)
+    elif model_type == "ae":
+        enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
+        dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
 
-    # Evaluate on the final models saved during training
-    vae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + model_name + ".pth")
-    vae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "dec_" + model_name + ".pth")
+        net = ae_stager.AE(enc=enc, dec=dec)
+        criterion = ae_stager.ae_criterion
 
-    vae_enc.load_state_dict(torch.load(vae_enc_model_path, map_location=DEVICE))
-    vae_dec.load_state_dict(torch.load(vae_dec_model_path, map_location=DEVICE))
+    if enc is None or dec is None:
+        print("Arguments not validated properly - please fix")
+        exit()
 
-    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, vae, DEVICE)
-    reconstruction_mse = reconstruction_mse.cpu()
-
-    print("Staging MSE of trained VAE on validation set:", staging_mse)
-    print("Reconstruction MSE of trained VAE on validation set:", reconstruction_mse)
-
-    # ---------- Train AE -----------
-    ae_enc = ae_stager.Encoder(d_in=num_biomarkers, d_latent=1).to(DEVICE)
-    ae_dec = ae_stager.Decoder(d_out=num_biomarkers, d_latent=1).to(DEVICE)
-
-    ae = ae_stager.AE(enc=ae_enc, dec=ae_dec)
-
-    opt_ae = torch.optim.Adam(itertools.chain(ae_enc.parameters(), ae_dec.parameters()), lr=0.001)
+    opt = torch.optim.Adam(itertools.chain(enc.parameters(), dec.parameters()), lr=0.001)
 
     # Run training loop
-    run_training(n_epochs, ae, model_name, train_loader, val_loader,
-                 opt_ae, ae_stager.ae_criterion, model_type="ae", device=DEVICE)
+    run_training(n_epochs, net, model_name, train_loader, val_loader, opt,
+                 criterion, model_type=model_type, device=DEVICE)
 
     # Evaluate on the final models saved during training
-    ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + model_name + ".pth")
-    ae_dec_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "dec_" + model_name + ".pth")
+    enc_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "enc_" + model_name + ".pth")
+    dec_model_path = os.path.join(SAVED_MODEL_DIR, model_type, "dec_" + model_name + ".pth")
 
-    ae_enc.load_state_dict(torch.load(ae_enc_model_path, map_location=DEVICE))
-    ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
+    enc.load_state_dict(torch.load(enc_model_path, map_location=DEVICE))
+    dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
 
-    staging_mse, reconstruction_mse = evaluate_autoencoder(val_loader, ae, DEVICE)
+    staging_rmse, reconstruction_mse = evaluate_autoencoder(val_loader, net, DEVICE)
     reconstruction_mse = reconstruction_mse.cpu()
 
-    print("Staging MSE of trained AE on validation set:", staging_mse)
-    print("Reconstruction MSE of trained AE on validation set:", reconstruction_mse)
+    # This check only exists because the processed ADNI data I am using has no labels currently
+    if dataset_type == "synthetic":
+        print("Staging RMSE on validation set:", staging_rmse)
+
+    print("Reconstruction MSE on validation set:", reconstruction_mse)

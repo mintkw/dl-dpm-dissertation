@@ -19,7 +19,7 @@ def staged_biomarker_plots(dataloader, net, device):
     with torch.no_grad():
         for data, label in dataloader:
             X.append(data.cpu())
-            preds.append(net.predict_stage(data) * n_biomarkers)  # Scale up stage to match ground truth scale
+            preds.append(net.predict_stage(data))
 
     X = torch.concatenate(X).squeeze()
     preds = torch.concatenate(preds).squeeze().cpu()
@@ -47,21 +47,21 @@ def mean_data_against_discretised_stage(dataloader, net, device):
 
     # Get number of biomarkers
     example, _ = next(iter(dataloader))
-    batch_size, n_biomarkers = example.shape
+    n_biomarkers = example.shape[1]
     num_biomarkers_to_plot = min(10, n_biomarkers)
 
     X_per_stage = [[] for _ in range(n_biomarkers + 1)]
 
     # Get data and corresponding predictions
     with torch.no_grad():
-        for X, label in dataloader:
+        for X, _ in dataloader:
             preds = net.predict_stage(X)
 
             # Translate and group preds into 0, 1, ..., n_biomarkers
             preds_int = torch.round(preds * n_biomarkers).int()
 
             # Sort the observation data by predicted stage.
-            for i in range(batch_size):
+            for i in range(X.shape[0]):
                 X_per_stage[preds_int[i]].append(X[i].cpu())
 
     mean_X_per_stage = np.zeros((n_biomarkers + 1, n_biomarkers))
@@ -69,7 +69,7 @@ def mean_data_against_discretised_stage(dataloader, net, device):
         # Skip if no data has been recorded with this predicted stage
         if len(X_per_stage[stage]) == 0:
             continue
-        print(np.array(X_per_stage[stage]).shape)
+        # print(np.array(X_per_stage[stage]).shape)
         mean_X_per_stage[stage] = np.array(X_per_stage[stage]).mean(axis=0)
     mean_X_per_stage = np.array(mean_X_per_stage)
 
@@ -101,7 +101,7 @@ def gt_biomarker_plots(dataloader):
     with torch.no_grad():
         for data, label in dataloader:
             X.append(data.cpu())
-            labels.append(label.cpu())
+            labels.append(label.cpu() / example.shape[1])
 
     X = torch.concatenate(X).squeeze()
     labels = torch.concatenate(labels).squeeze()
@@ -139,6 +139,11 @@ def predicted_stage_comparison(dataloader, num_biomarkers, net, device):
 
     fig, ax = plt.subplots(figsize=(9, 6))
     ax.scatter(labels, preds)
+
+    # Plot a straight line for comparison
+    ax.plot(np.linspace(0, 1, 2), np.linspace(0, 1, 2))
+    # ax.plot(preds - labels)
+
     fig.suptitle("Predicted vs ground truth stages")
     ax.set_xlabel("Ground truth")
     ax.set_ylabel("Prediction")
@@ -197,3 +202,85 @@ def predicted_biomarker_trajectories(num_biomarkers, net, device):
 
     return fig, ax
 
+
+def plot_predicted_sequence(gt_ordering, pred_ordering):
+    # Adapted from kde_ebm.plotting.mcmc_uncert_mat
+    n_biomarkers = gt_ordering.shape[0]
+    score_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
+
+    matrix = np.zeros((n_biomarkers, n_biomarkers))
+    matrix[gt_ordering, pred_ordering] = 1
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(matrix, interpolation='nearest', cmap='Purples')
+
+    if n_biomarkers > 50:
+        stp = 5
+    elif n_biomarkers > 20:
+        stp = 2
+    else:
+        stp = 1
+
+    tick_marks_x = np.arange(0, n_biomarkers, stp)
+    x_labels = range(1, n_biomarkers + 1, stp)
+    ax.set_xticks(tick_marks_x)
+    ax.set_xticklabels(x_labels, rotation=0, fontsize=8)
+
+    if n_biomarkers <= 50:
+        ax.set_yticks(np.arange(n_biomarkers))
+        ax.set_yticklabels(np.array(score_names, dtype='object')[gt_ordering],
+                           rotation=30, ha='right',
+                           rotation_mode='anchor',
+                           fontsize=8,
+                           )
+    else:
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+
+    ax.set_ylabel("Biomarker in ground truth ordering")
+    ax.set_xlabel("Predicted sequence position of event")
+    fig.suptitle("Ground truth sequence position vs predicted position")
+
+    return fig, ax
+
+
+def event_time_uncertainty_mat(gt_ordering, x, y, weights=None):
+    # Experimental: plot inferred event time distribution for each biomarker, as an uncertainty matrix.
+    # Designed to look visually consistent with the output of kde_ebm.plotting.mcmc_uncert_mat
+    # Arguments are np arrays
+    # y here is the position of the biomarker in the ground truth sequence, just so the diagram is intuitive.
+
+    n_biomarkers = gt_ordering.shape[0]
+    score_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    hist, xedges, yedges = np.histogram2d(x, y, bins=(n_biomarkers, n_biomarkers), weights=weights)
+    matrix = hist.T
+    matrix = matrix / np.sum(matrix, axis=1)[:, None]
+    ax.imshow(matrix, interpolation='nearest', cmap='Purples')
+
+    # Set y (biomarker) ticks and labels
+    if n_biomarkers <= 50:
+        ax.set_yticks(np.arange(n_biomarkers))
+        ax.set_yticklabels(np.array(score_names, dtype='object')[gt_ordering],
+                           rotation=30, ha='right',
+                           rotation_mode='anchor',
+                           fontsize=8,
+                           )
+    else:
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+
+    # Set x (pseudotime) ticks and labels
+    tick_marks_x = np.arange(0, n_biomarkers + 1, n_biomarkers / 10) - 0.5  # default 10 ticks on x axis
+    ax.set_xticks(tick_marks_x)
+    x_labels = [f'{x_label:.2f}' for x_label in np.linspace(np.min(x), np.max(x), tick_marks_x.shape[0])]
+
+    ax.set_xticks(tick_marks_x)
+    ax.set_xticklabels(x_labels, rotation=0, fontsize=8)
+
+    ax.set_ylabel("Biomarker (in order of ground truth sequence)")
+    ax.set_xlabel("Predicted pseudotime of event")
+    fig.suptitle("Event time uncertainty matrix")
+
+    return fig, ax

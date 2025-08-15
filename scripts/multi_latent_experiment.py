@@ -8,7 +8,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 import evaluation
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_VAL_DIR, SIMULATED_LABEL_VAL_DIR
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TEST_DIR
 from datasets.synthetic_dataset_vector import SyntheticDatasetVec
 from train_autoencoder import run_training
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # Load training and validation sets
     train_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
-    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_VAL_DIR, label_directory=SIMULATED_LABEL_VAL_DIR)
+    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]
