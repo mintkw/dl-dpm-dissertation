@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-from datasets.simulate_data import generate_normalised_data
+from datasets.simulate_data import generate_data
 from train_autoencoder import run_training
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from datasets.synthetic_dataset import SyntheticDataset
 from models import ae_stager, vae_stager
 from evaluation import evaluate_autoencoder
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
@@ -56,15 +56,15 @@ if __name__ == "__main__":
                 # Generate a fresh dataset
                 sds_normal = noise_level * np.ones(n_biomarkers)
                 sds_abnormal = noise_level * np.ones(n_biomarkers)
-                generate_normalised_data(n_biomarkers=n_biomarkers, n_mci=10 * n_biomarkers,
-                                         n_controls=n_biomarkers, n_patients=n_biomarkers,
-                                         sds_normal=sds_normal, sds_abnormal=sds_abnormal)
+                generate_data(n_biomarkers=n_biomarkers, n_mci=10 * n_biomarkers,
+                              n_controls=n_biomarkers, n_patients=n_biomarkers,
+                              sds_normal=sds_normal, sds_abnormal=sds_abnormal)
 
-                train_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
-                                                label_directory=SIMULATED_LABEL_TRAIN_DIR)
+                train_set = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                             label_directory=SIMULATED_LABEL_TRAIN_DIR)
                 train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
-                val_set = SyntheticDatasetVec(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
-                                              label_directory=SIMULATED_LABEL_TEST_DIR)
+                val_set = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
+                                           label_directory=SIMULATED_LABEL_TEST_DIR)
                 val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
                 n_epochs = 1000

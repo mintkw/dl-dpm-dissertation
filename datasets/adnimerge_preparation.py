@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 import statsmodels.formula.api as smf
 
-from config import ADNIMERGE_DIR
+from config import ADNI_DIR
 
 
 if __name__ == "__main__":
     # READ IN ADNIMERGE, WHICH WILL BE USED AS A BASIS FOR JOINING THE SPREADSHEETS. --------------------------------
 
     # This is expected to raise "DtypeWarning: Columns (19,20,21,50,51,104,105,106) have mixed types"
-    data_adnimerge = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "ADNIMERGE.csv"))
+    data_adnimerge = pandas.read_csv(os.path.join(ADNI_DIR, "ADNIMERGE.csv"))
 
     # Convert the problem columns to numeric - note that coercing errors leads to some nans that could be salvaged
     data_adnimerge['ABETA'] = pandas.to_numeric(data_adnimerge['ABETA'], errors='coerce')
@@ -82,21 +82,26 @@ if __name__ == "__main__":
     data_adnimerge['ABpos'] = overall_positive
 
     # READ IN ADNI 1, 2, AND 3 VOLUMETRIC DATA -----------------------------------------------
-    data_fs43_adni1 = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "UCSFFSX_11_02_15.csv"))
-    data_fs51_adni2 = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "UCSFFSX51_11_08_19.csv"))
-    data_fs60_adni3 = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "UCSFFSX6.csv"))
+    data_fs43_adni1 = pandas.read_csv(os.path.join(ADNI_DIR, "UCSFFSX_11_02_15.csv"))
+    data_fs51_adni2 = pandas.read_csv(os.path.join(ADNI_DIR, "UCSFFSX51_11_08_19.csv"))
+    data_fs60_adni3 = pandas.read_csv(os.path.join(ADNI_DIR, "UCSFFSX6.csv"))
 
     # READ IN THE LABELS OF THE REGIONS FROM THE DATA DICTIONARY ------------------------------
-    data_dict = pandas.read_csv(os.path.join(ADNIMERGE_DIR, "DATADIC.csv"))
+    data_dict = pandas.read_csv(os.path.join(ADNI_DIR, "DATADIC.csv"))
     data_dict_fs43_adni1 = data_dict.loc[data_dict['TBLNAME'] == 'UCSFFSX']
     data_dict_fs51_adni2 = data_dict.loc[data_dict['TBLNAME'] == 'UCSFFSX51']
     data_dict_fs60_adni3 = data_dict.loc[data_dict['TBLNAME'] == 'UCSFFSX6']
 
     # PREPARE ADNI 1, 2, 3 DATA ---------------------------------------------------------------
     # Remove columns that are not cortical or subcortical volumes
-    for df in [data_fs43_adni1, data_fs51_adni2, data_fs60_adni3]:
-        select_columns = df.columns[~df.columns.str.contains('TS|TA|SA|HS')]
-        df = df[select_columns]
+    select_columns = data_fs43_adni1.columns[~data_fs43_adni1.columns.str.contains('TS|TA|SA|HS')]
+    data_fs43_adni1 = data_fs43_adni1[select_columns]
+
+    select_columns = data_fs51_adni2.columns[~data_fs51_adni2.columns.str.contains('TS|TA|SA|HS')]
+    data_fs51_adni2 = data_fs51_adni2[select_columns]
+
+    select_columns = data_fs60_adni3.columns[~data_fs60_adni3.columns.str.contains('TS|TA|SA|HS')]
+    data_fs60_adni3 = data_fs60_adni3[select_columns]
 
     # Also rename VISCODE columns for ADNI 2 and 3
     data_fs51_adni2['VISCODE'] = data_fs51_adni2['VISCODE2']
@@ -115,7 +120,7 @@ if __name__ == "__main__":
     data_dict_fs60_adni3 = data_dict_fs60_adni3[data_dict_fs60_adni3['FLDNAME'].str.contains('CV|SV')]
     data_dict_fs60_adni3['Label'] = data_dict_fs60_adni3['TEXT'].map(lambda x: x.lstrip('Cortical Volume (aparc.stats) of|Subcortical Volume (aseg.stats) of'))
 
-    # Replace screening visit codes with baseline
+    # Replace screening visit codes with baseline and remove those with no VISCODE (since we need it for joining the datasets)
     data_fs43_adni1['VISCODE'] = data_fs43_adni1['VISCODE'].replace('sc', 'bl')
     data_fs43_adni1 = data_fs43_adni1[data_fs43_adni1['VISCODE'] != 'f']
     data_fs43_adni1 = data_fs43_adni1[~data_fs43_adni1['VISCODE'].isnull()]
@@ -166,7 +171,7 @@ if __name__ == "__main__":
     regions_cingulate = ['PosteriorCingulate', 'RostralAnteriorCingulate',
                          'CaudalAnteriorCingulate', 'IsthmusCingulate']
 
-    regions_insula = ['Insula']  # unused??
+    regions_insula = ['Insula']
 
     # Sum over left and right cortical and subcortical regions and generate lobar data.
     data_dicts_fs = [data_dict_fs43_adni1, data_dict_fs51_adni2, data_dict_fs60_adni3]
@@ -279,56 +284,64 @@ if __name__ == "__main__":
     # data = zdata  # We only need the transformed data.
     # # ------------------------------------------------------------------------------------
 
-    # EXPERIMENT: Z SCORE TRANSFORMATIONS ---------------------------------------------------
+    # DATA TRANSFORMATIONS: z-score, then linearly map the mean over AB-negative subjects to 0 and
+    # the mean over AB-positive subjects to 1.
     zdata = pandas.DataFrame(data, copy=True)
-    # print(np.mean(zdata.loc[:, regions], axis=1).shape)
-    # print(np.std(zdata.loc[:, regions], axis=1).shape)
-    print(data.loc[:, regions].shape)
     for region in regions:
-        zdata.loc[:, region] = -(zdata.loc[:, region] - np.mean(zdata.loc[:, region])) / np.std(zdata.loc[:, region])
+        zdata.loc[:, region] = (zdata.loc[:, region] - np.mean(zdata.loc[:, region])) / np.std(zdata.loc[:, region])
+
+        # Compute mean over AB-negative subjects:
+        ab_negative_mean = np.mean(zdata.loc[zdata['ABpos'] == 0, region], axis=0)
+        ab_positive_mean = np.mean(zdata.loc[zdata['ABpos'] == 1, region], axis=0)
+
+        # Rescale data
+        zdata.loc[:, region] = (zdata.loc[:, region] - ab_negative_mean) / (ab_positive_mean - ab_negative_mean)
+
     data = zdata
     # ---------------------------------------------------------------------------------------
 
-    # todo: below is for an experiment - keeping only what i believe is volumetric data, and diagnosis for stratified split.
     data = data.loc[:, regions + ['CN', 'MCI', 'AD']]
 
-    # Split the dataset into training and testing sets.
-    CN_data = data[data['CN'] == 1]
-    MCI_data = data[data['MCI'] == 1]
-    AD_data = data[data['AD'] == 1]
-
-    shuffled_idx_CN = np.random.permutation(len(CN_data))
-    shuffled_idx_MCI = np.random.permutation(len(MCI_data))
-    shuffled_idx_AD = np.random.permutation(len(AD_data))
-
-    train_ratio = 0.8
-
-    train_data = pandas.concat([CN_data.iloc[shuffled_idx_CN[:int(train_ratio * len(CN_data))]],
-                                MCI_data.iloc[shuffled_idx_MCI[:int(train_ratio * len(MCI_data))]],
-                                AD_data.iloc[shuffled_idx_AD[:int(train_ratio * len(AD_data))]]
-                                ],
-                               ignore_index=True)
-
-    test_data = pandas.concat([CN_data.iloc[shuffled_idx_CN[int(train_ratio * len(CN_data)):]],
-                               MCI_data.iloc[shuffled_idx_MCI[int(train_ratio * len(MCI_data)):]],
-                               AD_data.iloc[shuffled_idx_AD[int(train_ratio * len(AD_data)):]]
-                               ],
-                              ignore_index=True)
-
-    # print(train_data.shape, test_data.shape, data.shape)
-
     # Save the longitudinal data to a spreadsheet.
-    # print(data.shape)
+    print(data.shape)
     print(data.columns.tolist())
-    train_data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_train.csv"), index=False)
-    test_data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_test.csv"), index=False)
+    data.to_csv(os.path.join(ADNI_DIR, "adni_summed_volumes.csv"), index=False)
 
     # print(np.mean(zdata.loc[is_control, regions].values, axis=0))
     # print(np.min(zdata.loc[is_control, regions].values, axis=0), np.max(zdata.loc[is_control, regions].values, axis=0))
-    print(np.mean(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
-    print(np.min(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
-    print(np.mean(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
-    print(np.min(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
+    # print(np.mean(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
+    # print(np.min(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
+    # print(np.mean(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
+    # print(np.min(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
 
-    # data.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data_raw.csv"), index=False)
-    # zdata.to_csv(os.path.join(ADNIMERGE_DIR, "adni_longitudinal_data.csv"), index=False)
+    # Plot a histogram of CN, MCI, and AD for each biomarker (adapted from kde_ebm/plotting)
+    bio_y = np.argmax(data.iloc[:, -3:], axis=-1)
+    n_biomarkers = data.shape[1] - 3
+    n_x = np.round(np.sqrt(n_biomarkers)).astype(int)
+    n_y = np.ceil(np.sqrt(n_biomarkers)).astype(int)
+    # hist_c = colors[:2]
+    fig, ax = plt.subplots(n_y, n_x, figsize=(12, 12))
+    for i in range(n_biomarkers):
+        bio_X = data.iloc[:, i]
+
+        hist_dat = [bio_X[bio_y == 0],
+                    bio_X[bio_y == 2],
+                    bio_X[bio_y == 1]]
+
+        leg1 = ax.flat[i].hist(hist_dat,
+                               density=True,
+                               # color=hist_c,
+                               alpha=0.7,
+                               stacked=True)
+                               # bins=bin_edges)
+        ax.flat[i].set_title(f"Biomarker {i}")
+        ax.flat[i].axes.get_yaxis().set_visible(False)
+
+    # * Delete unused axes
+    i += 1
+    for j in range(i, n_x * n_y):
+        fig.delaxes(ax.flat[j])
+    fig.legend(leg1[2], ['CN', 'AD', 'MCI'],
+               bbox_to_anchor=(1, 1), loc="upper right", fontsize=15)
+    fig.tight_layout()
+    plt.show()

@@ -30,7 +30,7 @@ def greedy_ascent_creation(prob_mat, n_iter=1000, n_init=10):
                 num_iters_without_improvement += 1
 
             # stop early if no improvement observed for a certain number of iterations
-            iteration_cap = 200
+            iteration_cap = 1000
             if num_iters_without_improvement >= iteration_cap:
                 print(f"Stopping early at {iter_n} iters due to a lack of observed improvement for {iteration_cap} iterations")
                 break

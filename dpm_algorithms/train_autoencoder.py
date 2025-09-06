@@ -5,14 +5,15 @@ import itertools
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNIMERGE_DIR
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNI_DIR
+from datasets.synthetic_dataset import SyntheticDataset
 from evaluation import evaluate_autoencoder
 
 from models import ae_stager, vae_stager
 
 
-def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser, criterion, model_type, device):
+def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser, criterion, model_type, device,
+                 min_epochs=0):
     train_dataset_size = len(train_loader.dataset)
     model_dir = os.path.join(SAVED_MODEL_DIR, model_type)
     os.makedirs(model_dir, exist_ok=True)
@@ -23,7 +24,7 @@ def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser,
     epochs_without_improvement = 0
     best_loss = float('inf')
     epoch_patience = 10
-    minimum_improvement = 1e-4  # Minimum improvement considered 'significant'
+    minimum_improvement = 0  # Minimum improvement considered 'significant'
 
     for epoch in tqdm(range(n_epochs), desc=f"Training {model_type}"):
         train_loss = 0.0
@@ -47,15 +48,12 @@ def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser,
 
                 val_loss += criterion(X, net, device).item() * X.shape[0] / val_dataset_size
 
-        # Compute error between latents and stages, just to track progress
-        # rmse_stage_error, reconstruction_error = evaluate_autoencoder(train_loader, net, device)
-
         if best_loss - val_loss >= minimum_improvement:
             best_loss = val_loss
             torch.save(net.enc.state_dict(), enc_path)
             torch.save(net.dec.state_dict(), dec_path)
             epochs_without_improvement = 0
-        else:
+        elif epoch > min_epochs:  # only start counting once the minimum number of epochs has passed
             # Terminate training early if no significant improvement
             epochs_without_improvement += 1
 
@@ -81,10 +79,12 @@ def run_training(n_epochs, net, model_name, train_loader, val_loader, optimiser,
 
 if __name__ == "__main__":
     # USER CONFIGURATION --------------------
-    # num_sets = 1
-    # dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
+    num_sets = 1
+    # dataset_names = [f"synthetic_1200_100_{i}" for i in range(num_sets)]
     # model_name = "synthetic_120_10_0"
-    dataset_names = ["adni_longitudinal_data_train"]
+    # dataset_names = ["adni_longitudinal_data_all_volumes_abpos"]
+    # model_name = dataset_names[0]
+    dataset_names = ["rexample_0"]
     model_name = dataset_names[0]
 
     model_type = "ae"  # only vae or ae supported currently
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         print("Model type must be one of 'vae' or 'ae' (case-sensitive)")
         exit()
 
-    dataset_type = "adni"  # only 'synthetic' or 'adni' supported currently
+    dataset_type = "synthetic"  # only 'synthetic' or 'adni' supported currently
     if dataset_type not in ["synthetic", "adni"]:
         print("Dataset type must be one of 'synthetic' or 'adni' (case-sensitive)")
         exit()
@@ -101,15 +101,10 @@ if __name__ == "__main__":
     # Load data
     dataset = None
     if dataset_type == "synthetic":
-        dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
-                                      label_directory=SIMULATED_LABEL_TRAIN_DIR)
+        dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                   label_directory=SIMULATED_LABEL_TRAIN_DIR)
     elif dataset_type == "adni":
-        dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=ADNIMERGE_DIR)
-
-    # # EXPERIMENT SMALL TOY DATASET FOR NOW --------------------------
-    # toy_indices = train_test_split(range(len(dataset)), train_size=0.2)[0]
-    # dataset = torch.utils.data.Subset(dataset, toy_indices)
-    # # EXPERIMENT END -------------------------------------------------
+        dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=ADNI_DIR)
 
     # Split training set
     train_indices, val_indices = train_test_split(range(len(dataset)), train_size=0.8)
@@ -119,8 +114,8 @@ if __name__ == "__main__":
     val_split = torch.utils.data.Subset(dataset, val_indices)
 
     # Create dataloader
-    train_loader = torch.utils.data.DataLoader(train_split, batch_size=8, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_split, batch_size=8)
+    train_loader = torch.utils.data.DataLoader(train_split, batch_size=16, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_split, batch_size=16, shuffle=True)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]
 

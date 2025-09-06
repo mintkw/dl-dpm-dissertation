@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TEST_DIR, DEVICE
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from datasets.synthetic_dataset import SyntheticDataset
 
 
 def plot_dataset_in_latent_space(net, dataset_names):
@@ -10,9 +10,9 @@ def plot_dataset_in_latent_space(net, dataset_names):
     fig.suptitle("Encoding of the training set in the latent space")
 
     # Load the data from each subtype individually so they can be differentiated through colour coding
-    train_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
-                                          obs_directory=SIMULATED_OBS_TRAIN_DIR,
-                                          label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
+    train_datasets = [SyntheticDataset(dataset_names=[dataset_name],
+                                       obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                       label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
     train_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in train_datasets]
     cmaps = ['viridis', 'inferno', 'cool']
 
@@ -50,9 +50,9 @@ def compute_subtype_accuracy(net, dataset_names):
 
     """
     # Load the data from each subtype individually
-    val_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
-                                        obs_directory=SIMULATED_OBS_TEST_DIR,
-                                        label_directory=SIMULATED_LABEL_TEST_DIR) for dataset_name in dataset_names]
+    val_datasets = [SyntheticDataset(dataset_names=[dataset_name],
+                                     obs_directory=SIMULATED_OBS_TEST_DIR,
+                                     label_directory=SIMULATED_LABEL_TEST_DIR) for dataset_name in dataset_names]
     val_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in val_datasets]
 
     subtype_accuracy = 0.0
@@ -85,9 +85,9 @@ def compute_subtype_accuracy_with_cluster_mapping(net, dataset_names):
     n_subtypes = len(dataset_names)
 
     # Load the data from each subtype individually
-    val_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
-                                        obs_directory=SIMULATED_OBS_TEST_DIR,
-                                        label_directory=SIMULATED_LABEL_TEST_DIR) for dataset_name in dataset_names]
+    val_datasets = [SyntheticDataset(dataset_names=[dataset_name],
+                                     obs_directory=SIMULATED_OBS_TEST_DIR,
+                                     label_directory=SIMULATED_LABEL_TEST_DIR) for dataset_name in dataset_names]
     val_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in val_datasets]
 
     max_probs = torch.zeros(n_subtypes, device=DEVICE)  # elem i holds max_n{q(y=i|x_n)}

@@ -2,7 +2,8 @@ import csv
 import os
 import pandas as pd
 import numpy as np
-from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR
+
+from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, ADNI_DIR
 
 
 def prepare_csv_for_kde_ebm(csv_path, suffix):
@@ -34,11 +35,14 @@ def prepare_csv_for_kde_ebm(csv_path, suffix):
 
 
 if __name__ == "__main__":
-    # Converts all dataset csv files in the synthetic data directory that do not have the prepared data suffix
+    # Convert all dataset csv files in the data directories that do not have the prepared data suffix
     suffix = "kde-ebm"
-    simulated_obs_dir = os.path.join("..", SIMULATED_OBS_DIR)
+    directories = [SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, ADNI_DIR]
 
-    for filename in os.listdir(simulated_obs_dir):
-        split_filename = os.path.splitext(filename)
-        if split_filename[-1] == ".csv" and split_filename[0].split('_')[-1] != suffix:
-            prepare_csv_for_kde_ebm(os.path.join(simulated_obs_dir, filename), suffix=suffix)
+    for directory in directories:
+        for filename in os.listdir(directory):
+            split_filename = os.path.splitext(filename)
+            if split_filename[-1] == ".csv" and split_filename[0].split('_')[-1] != suffix:
+                prepare_csv_for_kde_ebm(os.path.join(directory, filename), suffix=suffix)
+
+    # prepare_csv_for_kde_ebm(os.path.join(ADNI_DIR, "adni_longitudinal_data_all_volumes.csv"), suffix="kde-ebm")

@@ -61,7 +61,7 @@ def fit_all_gmm_models(X, y, fit_all_subjects=False, implement_fixed_controls=Fa
 
 
 def fit_all_kde_models(X, y, implement_fixed_controls=False, patholog_dirn_array=None, outlier_controls_quantile = 0.9):
-    #* Extract only the first two diagnoses
+    #* Extract only the first two diagnoses AD and CN
     msk = np.where(y<2)[0]
     X = X[msk]
     y = y[msk]

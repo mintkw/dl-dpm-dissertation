@@ -68,6 +68,12 @@ def mixture_model_grid(X, y, mixtures,
                                           color=colors[4])
         ax.flat[i].set_title(score_names[i])
         ax.flat[i].axes.get_yaxis().set_visible(False)
+
+        # if i == n_biomarkers - 5:
+        #     print(score_names[i])
+        #     print(controls_score)
+        #     print(patholog_score)
+        #     print(probability)
     #* Delete unused axes
     i += 1
     for j in range(i, n_x*n_y):
@@ -89,16 +95,11 @@ def mcmc_trace(mcmc_samples):
     return fig, ax
 
 
-def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None, gt_order=None):
-    # kw: if gt_order is not None, plot in order of gt_order rather than ml_order
-    if gt_order is None:
-        if ml_order is None:
-            plotting_order = mcmc_samples[0].ordering
-        else:
-            plotting_order = ml_order.ordering
-
+def mcmc_uncert_mat(mcmc_samples, ml_order=None, score_names=None):
+    if ml_order is None:
+        plotting_order = mcmc_samples[0].ordering
     else:
-        plotting_order = np.array(gt_order)
+        plotting_order = ml_order.ordering
 
     n_biomarkers = plotting_order.shape[0]
     if score_names is None:

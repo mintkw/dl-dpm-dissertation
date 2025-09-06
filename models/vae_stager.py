@@ -8,9 +8,8 @@ from tqdm import tqdm
 from scipy import stats
 
 from config import SIMULATED_OBS_DIR, SIMULATED_LABEL_DIR, DEVICE, SAVED_MODEL_DIR
-from datasets.synthetic_dataset_matrix import SyntheticDatasetMat
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
-from evaluation import evaluate_autoencoder
+from datasets.synthetic_dataset import SyntheticDataset
+from dpm_algorithms.evaluation import evaluate_autoencoder
 from models.autoencoder import AutoEncoder
 
 
@@ -21,7 +20,7 @@ class Encoder(nn.Module):
         self.d_latent = d_latent
 
         self.net = nn.Sequential(nn.Linear(d_in, 16),
-                                 nn.Sigmoid())
+                                 nn.ReLU())
 
         self.fc_mu = nn.Linear(16, d_latent)
         self.fc_sigma = nn.Linear(16, d_latent)
@@ -42,7 +41,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.d_latent = d_latent
         self.net = nn.Sequential(nn.Linear(self.d_latent, 16),
-                                 nn.Sigmoid())
+                                 nn.ReLU())
 
         self.fc_mu = nn.Linear(16, d_out)
         self.fc_sigma = nn.Linear(16, d_out)
@@ -72,27 +71,7 @@ class VAE(AutoEncoder):
         return self.enc(X).mean
 
     def decode_latent(self, z):
-        return self.dec(z).sample()  # or mean...?
-
-    # def automatically_set_latent_direction(self, dataloader):
-    #     with torch.no_grad():
-    #         batch_size = next(iter(dataloader))[0].shape[0]
-    #         mean_correlation = 0.  # mean correlation across all variables and batches
-    #         dataset_size = len(dataloader.dataset)
-    #
-    #         for X, _ in dataloader:
-    #             uncorrected_latents = self.enc(X).mean
-    #
-    #             # use mean correlation as a way to regularise the direction of the latent (lower for lower biomarker values)
-    #             data_matrix = torch.concat([X, uncorrected_latents], dim=1)  # columns as variables and rows as observations
-    #
-    #             correlation_matrix = stats.spearmanr(data_matrix.detach().cpu()).statistic
-    #             mean_correlation += correlation_matrix[-1][:-1].mean() * batch_size / dataset_size
-    #
-    #         if mean_correlation > 0:
-    #             self.enc.latent_dir = nn.Parameter(torch.ones(1, requires_grad=False).to(DEVICE))
-    #         else:
-    #             self.enc.latent_dir = nn.Parameter(torch.zeros(1, requires_grad=False).to(DEVICE))
+        return self.dec(z).mean
 
 
 def compute_elbo(vae, X, device, beta):
@@ -111,24 +90,11 @@ def compute_elbo(vae, X, device, beta):
 
     kl_div = kl_div.sum(-1)  # per-datapoint ELBO is the sum over the per-latent ELBOs
 
-    # # EXPERIMENT -------------------
-    # # calculate KL divergence from a sample
-    # prior = dist.Normal(0, 1)
-    # kl_div = q_z.log_prob(z) - prior.log_prob(z)
-    # kl_div = kl_div.squeeze(-1)
-    # # -----------------------------
-
     # negative expected reconstruction error
     posterior = vae.dec(z)
     expected_p_x = posterior.log_prob(X).sum(-1)
 
-    # print(kl_div, expected_p_x)
-
-    # EXPERIMENT: BETA VAE -------------------------
     return -beta * kl_div + expected_p_x
-    # ---------------------------------------------------
-
-    return -kl_div + expected_p_x
 
 
 def vae_criterion_wrapper(beta=1):

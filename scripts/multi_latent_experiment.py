@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 import evaluation
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TEST_DIR
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from datasets.synthetic_dataset import SyntheticDataset
 from train_autoencoder import run_training
 
 from models import ae_stager, vae_stager
@@ -20,9 +20,9 @@ def plot_dataset_in_latent_space(net, dataset_names):
     fig.suptitle("Encoding of the training set in the latent space")
 
     # Load the data from each subtype individually so they can be differentiated through colour coding
-    train_datasets = [SyntheticDatasetVec(dataset_names=[dataset_name],
-                                          obs_directory=SIMULATED_OBS_TRAIN_DIR,
-                                          label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
+    train_datasets = [SyntheticDataset(dataset_names=[dataset_name],
+                                       obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                                       label_directory=SIMULATED_LABEL_TRAIN_DIR) for dataset_name in dataset_names]
     train_loaders = [torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True) for dataset in train_datasets]
     cmaps = ['viridis', 'inferno']
 
@@ -82,9 +82,9 @@ if __name__ == "__main__":
         exit()
     # ---------------------------------------
     # Load training and validation sets
-    train_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    train_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_dataset = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
+    val_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8, shuffle=True)
 
     example_x, _ = next(iter(train_loader))
@@ -114,10 +114,10 @@ if __name__ == "__main__":
         print("Arguments not validated properly - please fix")
         exit()
 
-    train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    train_set = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
-    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
+    val_set = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]

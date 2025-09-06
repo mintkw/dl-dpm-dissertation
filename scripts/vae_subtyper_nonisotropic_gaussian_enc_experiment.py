@@ -4,15 +4,13 @@ import torch
 import torch.distributions as dist
 import torch.nn as nn
 import itertools
-from tqdm import tqdm
-from scipy import stats
 import matplotlib.pyplot as plt
 
 from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TEST_DIR, DEVICE, SAVED_MODEL_DIR
-from datasets.synthetic_dataset_vector import SyntheticDatasetVec
+from datasets.synthetic_dataset import SyntheticDataset
 from evaluation import evaluate_autoencoder
 from train_autoencoder import run_training
-from plotting import predicted_stage_comparison
+from dpm_algorithms.plotting import predicted_stage_comparison
 from models import vae_stager
 from subtyping_utils import plot_dataset_in_latent_space, compute_subtype_accuracy
 
@@ -148,10 +146,10 @@ if __name__ == "__main__":
     dataset_names = [f"synthetic_120_10_{i}" for i in range(num_sets)]
     model_name = "synthetic_120_10_mixed"
 
-    train_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+    train_set = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=8, shuffle=True)
 
-    val_set = SyntheticDatasetVec(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
+    val_set = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR, label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=8, shuffle=True)
 
     num_biomarkers = next(iter(train_loader))[0].shape[1]

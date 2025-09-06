@@ -18,17 +18,6 @@ def compute_reconstruction_mse(dataloader, net, device):
 
 
 def evaluate_autoencoder(dataloader, net, device):
-    """
-
-    Args:
-        dataloader:
-        net: needs an autoencoder
-        device:
-        num_latents: if > 1, evaluates the first dimension
-
-    Returns:
-
-    """
     predictions = []
     gt_stages = []
     reconstruction_errors = []
@@ -59,5 +48,6 @@ def evaluate_autoencoder(dataloader, net, device):
 
 
 def evaluate_sequence(preds, gt):
-    # Returns the Kendall's tau distance between the predicted and ground truth sequences. Expects both as a flat numpy array.
+    # Returns the Kendall's tau distance between the predicted and ground truth sequences.
+    # Expects both as a flat numpy array.
     return scipy.stats.kendalltau(np.argsort(preds), np.argsort(gt)).statistic
