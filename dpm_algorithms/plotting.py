@@ -371,7 +371,7 @@ def plot_predicted_sequence(gt_ordering, pred_ordering, biomarker_names=None):
 
     ax.set_ylabel("Biomarker in reference ordering")
     ax.set_xlabel("Predicted sequence position of event")
-    # fig.suptitle("Ground truth sequence position vs predicted position")
+    fig.suptitle("Ground truth sequence position vs predicted position")
 
     return fig, ax
 

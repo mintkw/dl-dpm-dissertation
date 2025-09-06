@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNI_DIR
 from datasets.synthetic_dataset import SyntheticDataset
-from evaluation import evaluate_autoencoder
+from dpm_algorithms.evaluation import evaluate_autoencoder
 
 from models import ae_stager, vae_stager
 

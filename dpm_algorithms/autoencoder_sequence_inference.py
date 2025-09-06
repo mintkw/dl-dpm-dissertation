@@ -9,7 +9,7 @@ from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_O
     SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
 from models import ae_stager, vae_stager
 from datasets.synthetic_dataset import SyntheticDataset
-from evaluation import evaluate_autoencoder, evaluate_sequence
+from dpm_algorithms.evaluation import evaluate_autoencoder, evaluate_sequence
 
 
 def infer_seq_from_network(dataloader, net):

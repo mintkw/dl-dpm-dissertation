@@ -9,12 +9,9 @@ import numpy as np
 import pandas as pd
 
 from datasets.kde_ebm_dataset_prep import prepare_csv_for_kde_ebm
-from kde_ebm import mixture_model
-from kde_ebm import mcmc
-from kde_ebm import plotting
-from kde_ebm import datasets
+from kde_ebm import mixture_model, mcmc, plotting, datasets
 from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNI_DIR
-from evaluation import evaluate_sequence
+from dpm_algorithms.evaluation import evaluate_sequence
 
 
 def run_kde_ebm(file_dir, file_name, plot=False):
