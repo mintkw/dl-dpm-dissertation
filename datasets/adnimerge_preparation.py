@@ -1,4 +1,4 @@
-# Based on the "Set up and Data Organisation" notebook written by Alexandra Young
+# Based on the "Set up and Data Organisation" notebook written by Alexandra Young.
 
 import os
 import pandas
@@ -177,21 +177,47 @@ if __name__ == "__main__":
     data_dicts_fs = [data_dict_fs43_adni1, data_dict_fs51_adni2, data_dict_fs60_adni3]
     datasets_fs = [data_fs43_adni1, data_fs51_adni2, data_fs60_adni3]
 
-    for i in range(3):
+    finegrained_regions = []
+
+    for i in range(3):  # iterate over ADNI 1, 2, 3
         dataset_fs = datasets_fs[i]
         data_dict_fs = data_dicts_fs[i]
 
         for region in regions_cortical:
             select_region = data_dict_fs['Label'].str.contains(region)
-            temp_values = dataset_fs[data_dict_fs[select_region]['FLDNAME']].to_numpy()
-            temp_sum = np.sum(temp_values, axis=1)
-            dataset_fs[region] = temp_sum
-        for region in regions_subcortical:
-            select_region = data_dict_fs['Label'].str.contains(region)
-            temp_values = dataset_fs[data_dict_fs[select_region]['FLDNAME']].to_numpy()
-            temp_sum = np.sum(temp_values, axis=1)
+
+            # Rename columns with full text labels
+            select_region_fldnames = data_dict_fs[select_region]['FLDNAME'].tolist()
+            select_region_labels = data_dict_fs[select_region]['Label'].tolist()
+
+            for j in range(len(select_region_fldnames)):
+                dataset_fs[select_region_labels[j]] = dataset_fs[select_region_fldnames[j]].to_numpy()
+
+            dataset_fs.drop(columns=select_region_fldnames)
+            finegrained_regions.append(select_region_labels)
+
+            # Sum columns over the region and add a new column for the sum to the dataset
+            temp_sum = np.sum(dataset_fs[select_region_labels].to_numpy(), axis=1)
             dataset_fs[region] = temp_sum
 
+        for region in regions_subcortical:
+            select_region = data_dict_fs['Label'].str.contains(region)
+
+            # Rename columns with full text labels
+            select_region_fldnames = data_dict_fs[select_region]['FLDNAME'].tolist()
+            select_region_labels = data_dict_fs[select_region]['Label'].tolist()
+
+            for j in range(len(select_region_fldnames)):
+                dataset_fs[select_region_labels[j]] = dataset_fs[select_region_fldnames[j]].to_numpy()
+
+            dataset_fs.drop(columns=select_region_fldnames)
+            finegrained_regions.append(select_region_labels)
+
+            # Sum columns over the region and add a new column for the sum to the dataset
+            temp_sum = np.sum(dataset_fs[select_region_labels].to_numpy(), axis=1)
+            dataset_fs[region] = temp_sum
+
+        # Sum over lobar regions
         dataset_fs['Frontal'] = np.sum(dataset_fs[regions_frontal].to_numpy(), axis=1)
         dataset_fs['Parietal'] = np.sum(dataset_fs[regions_parietal].to_numpy(), axis=1)
         dataset_fs['Temporal'] = np.sum(dataset_fs[regions_temporal].to_numpy(), axis=1)
@@ -211,49 +237,90 @@ if __name__ == "__main__":
     # Select only rows that pass overall quality control
     data = data[data['OVERALLQC'] == 'Pass']
 
-    # Replace duplicated columns with a single column
-    data['EXAMDATE'] = data['EXAMDATE_x'].copy()
-    data['Hippocampus'] = data['Hippocampus_x'].copy()
-    data['Entorhinal'] = data['Entorhinal_x'].copy()
-    data['Fusiform'] = data['Fusiform_x'].copy()
-
-    # Select data for study
-    data = data[['RID', 'VISCODE', 'EXAMDATE', 'Years_bl',
-                 'AGE', 'PTGENDER', 'PTEDUCAT', 'DX', 'MMSE', 'APOE4', 'ABpos',
-                 'FDG', 'PIB', 'AV45', 'FBB', 'ABETA', 'TAU', 'PTAU',
-                 'OVERALLQC', 'ICV', 'FSVERSION',
-                 'Frontal', 'Parietal', 'Temporal',
-                 'Occipital', 'Cingulate', 'Insula',
-                 'Accumbens', 'Amygdala', 'Caudate', 'Hippocampus',
-                 'Pallidum', 'Putamen', 'Thalamus']]
-
-    regions = ['Frontal', 'Parietal', 'Temporal',
-               'Occipital', 'Cingulate', 'Insula',
-               'Accumbens', 'Amygdala', 'Caudate', 'Hippocampus',
-               'Pallidum', 'Putamen', 'Thalamus']
-
-    # Keep only rows that have data for all regions
-    data = data[np.all(~np.isnan(data.loc[:, regions]), axis=1)]
-
-    # Keep only rows with ICV within 5 standard deviations of the mean
-    data = data.loc[np.abs(data['ICV'] - np.mean(data['ICV']) <= 5 * np.std(data['ICV']))]
-
-    # Add additional columns 'FS4', 'FS5', and 'FS6' that are boolean types indicating the FreeSurfer version.
-    data['FS4'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (FreeSurfer Version 4.3)'
-    data['FS5'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (5.1)'
-    data['FS6'] = data['FSVERSION'] == 'Cross-Sectional FreeSurfer (6.0)'
+    # Drop rows with no DX information.
+    data = data[~data['DX'].isnull()]
 
     # Create 3 new columns to one-hot encode CN, MCI, Dementia (as stored in column 'DX').
     data['CN'] = (data['DX'] == 'CN').astype(int)
     data['MCI'] = (data['DX'] == 'MCI').astype(int)
     data['AD'] = (data['DX'] == 'Dementia').astype(int)
 
-    # Drop rows that are missing data for any of the following columns
-    biomarkers = ['Frontal', 'Parietal', 'Temporal', 'Amygdala', 'Hippocampus', 'ICV']
-    data = data.loc[np.sum(np.isnan(data[biomarkers]), axis=1) == 0]
+    # Keep only rows with ICV within 5 standard deviations of the mean
+    data = data.loc[np.abs(data['ICV'] - np.mean(data['ICV']) <= 5 * np.std(data['ICV']))]
 
-    # Drop rows with no DX information
-    data = data[~data['DX'].isnull()]
+    # Replace duplicated columns with a single column
+    data['EXAMDATE'] = data['EXAMDATE_x'].copy()
+    data['Hippocampus'] = data['Hippocampus_x'].copy()
+    data['Entorhinal'] = data['Entorhinal_x'].copy()
+    data['Fusiform'] = data['Fusiform_x'].copy()
+
+    regions = ['Frontal', 'Parietal', 'Temporal',
+               'Occipital', 'Cingulate', 'Insula',
+               'Accumbens', 'Amygdala', 'Caudate', 'Hippocampus',
+               'Pallidum', 'Putamen', 'Thalamus']
+
+    finegrained_regions = np.unique(np.array(finegrained_regions)).tolist()
+
+    # Keep only rows that have data for all volumes
+    data = data[np.all(~np.isnan(data.loc[:, regions + finegrained_regions]), axis=1)]
+
+    # print(data.loc[data['ABpos'] == 0].loc[:, regions].mean(0))
+    # print(data.loc[data['ABpos'] == 1].loc[:, regions].mean(0))
+    # print(data.loc[(data['CN'] == 1) & (data['ABpos'] == 0)].loc[:, regions].mean(0))
+    # print(data.loc[(data['AD'] == 1)].loc[:, regions].mean(0))
+
+    # # Filter for baseline data.
+    # data = data[data['VISCODE'] == 'bl']
+
+
+    # DATA TRANSFORMATIONS: z-score, then linearly map the mean over AB-negative subjects to 0 and
+    # the mean over AB-positive subjects to 1.
+    is_control = (data['DX'] == 'CN') & (data['ABpos'] == 0) & (data['VISCODE'] == 'bl')
+    for region in regions + finegrained_regions:
+        data.loc[:, region] = (data.loc[:, region] - np.mean(data.loc[:, region])) / np.std(data.loc[:, region])
+        # data.loc[:, region] -= 0.5
+
+        # Compute means over CN (and AB negative) and AD estimates:
+        ab_negative_mean = np.mean(data.loc[is_control, region])
+        ab_positive_mean = np.mean(data.loc[data['AD'] == 1, region])  # to make the estimate more extreme
+        # ab_negative_mean = np.mean(data.loc[data['ABpos'] == 0, region])
+        # ab_positive_mean = np.mean(data.loc[data['ABpos'] == 1, region])
+
+        # Ensure increasing biomarker trajectory
+        if ab_positive_mean <= ab_negative_mean:
+            data.loc[:, region] = -data.loc[:, region]
+
+            # Recompute means
+            # ab_negative_mean = np.mean(data.loc[(data['ABpos'] == 0) & data['CN'] == 1, region])
+            # ab_positive_mean = np.mean(data.loc[data['AD'] == 1, region])
+            ab_negative_mean = np.mean(data.loc[is_control, region])
+            ab_positive_mean = np.mean(data.loc[data['ABpos'] == 1, region])
+
+        # Translate data so the mean between AB negative and positive is at 0.5
+        ab_midpoint = (ab_positive_mean + ab_negative_mean) / 2
+        data.loc[:, region] -= (ab_midpoint - 0.5)
+
+        # # Try: Translate data so the AB positive mean is at 0.5
+        # data.loc[:, region] -= (ab_positive_mean - 0.5)
+
+        # Scale so ABpos mean is at 1 and ABneg mean at 0
+        # data.loc[:, region] = (data.loc[:, region] - ab_negative_mean) / (ab_positive_mean - ab_negative_mean)
+
+    # Filter for amyloid-positive data.
+    abpos_data = data[data['ABpos'] == 1]
+
+    # print(data.loc[data['ABpos'] == 0].loc[:, regions + finegrained_regions].mean(0))
+    # print(data.loc[data['ABpos'] == 1].loc[:, regions + finegrained_regions].mean(0))
+    # print(data.loc[:, regions + finegrained_regions].mean(0))
+    # Select data for study
+    data_summed = data[regions].join(data[['CN', 'MCI', 'AD']])
+    data_all = data[finegrained_regions].join(data[['CN', 'MCI', 'AD']])
+    abpos_data_summed = abpos_data[regions].join(abpos_data[['CN', 'MCI', 'AD']])
+    abpos_data_all = abpos_data[finegrained_regions].join(abpos_data[['CN', 'MCI', 'AD']])
+
+    # # Drop rows that are missing data for any of the following columns
+    # biomarkers = ['Frontal', 'Parietal', 'Temporal', 'Amygdala', 'Hippocampus', 'ICV']
+    # data = data.loc[np.sum(np.isnan(data[biomarkers]), axis=1) == 0]
 
     # # Replacement: drop rows that are missing data for any field.
     # data = data.loc[np.all(~np.isnan(data), axis=1)]
@@ -284,64 +351,62 @@ if __name__ == "__main__":
     # data = zdata  # We only need the transformed data.
     # # ------------------------------------------------------------------------------------
 
-    # DATA TRANSFORMATIONS: z-score, then linearly map the mean over AB-negative subjects to 0 and
-    # the mean over AB-positive subjects to 1.
-    zdata = pandas.DataFrame(data, copy=True)
-    for region in regions:
-        zdata.loc[:, region] = (zdata.loc[:, region] - np.mean(zdata.loc[:, region])) / np.std(zdata.loc[:, region])
+    # Save the summed and non-summed data to a spreadsheet.
+    print("Summed dataset shape:", data_summed.shape)
+    print(data_summed.columns.tolist())
+    data_summed.to_csv(os.path.join(ADNI_DIR, "adni_summed_volumes.csv"), index=False)
 
-        # Compute mean over AB-negative subjects:
-        ab_negative_mean = np.mean(zdata.loc[zdata['ABpos'] == 0, region], axis=0)
-        ab_positive_mean = np.mean(zdata.loc[zdata['ABpos'] == 1, region], axis=0)
+    print("Non-summed dataset shape:", data_all.shape)
+    print(data_all.columns.tolist())
+    data_all.to_csv(os.path.join(ADNI_DIR, "adni_all_volumes.csv"), index=False)
 
-        # Rescale data
-        zdata.loc[:, region] = (zdata.loc[:, region] - ab_negative_mean) / (ab_positive_mean - ab_negative_mean)
+    print("Summed AB positive dataset shape:", abpos_data_summed.shape)
+    print(abpos_data_summed.columns.tolist())
+    abpos_data_summed.to_csv(os.path.join(ADNI_DIR, "adni_summed_volumes_abpos.csv"), index=False)
 
-    data = zdata
-    # ---------------------------------------------------------------------------------------
+    print("Non-summed AB positive dataset shape:", abpos_data_all.shape)
+    print(abpos_data_all.columns.tolist())
+    abpos_data_all.to_csv(os.path.join(ADNI_DIR, "adni_all_volumes_abpos.csv"), index=False)
 
-    data = data.loc[:, regions + ['CN', 'MCI', 'AD']]
+    exit()
 
-    # Save the longitudinal data to a spreadsheet.
-    print(data.shape)
-    print(data.columns.tolist())
-    data.to_csv(os.path.join(ADNI_DIR, "adni_summed_volumes.csv"), index=False)
-
-    # print(np.mean(zdata.loc[is_control, regions].values, axis=0))
-    # print(np.min(zdata.loc[is_control, regions].values, axis=0), np.max(zdata.loc[is_control, regions].values, axis=0))
-    # print(np.mean(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
-    # print(np.min(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'CN', regions].values, axis=0))
-    # print(np.mean(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
-    # print(np.min(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0), np.max(zdata.loc[zdata['DX'] == 'Dementia', regions].values, axis=0))
-
+    # PLOTTING
     # Plot a histogram of CN, MCI, and AD for each biomarker (adapted from kde_ebm/plotting)
-    bio_y = np.argmax(data.iloc[:, -3:], axis=-1)
-    n_biomarkers = data.shape[1] - 3
-    n_x = np.round(np.sqrt(n_biomarkers)).astype(int)
-    n_y = np.ceil(np.sqrt(n_biomarkers)).astype(int)
-    # hist_c = colors[:2]
-    fig, ax = plt.subplots(n_y, n_x, figsize=(12, 12))
-    for i in range(n_biomarkers):
-        bio_X = data.iloc[:, i]
+    datasets = [data_summed, data_all, abpos_data_summed, abpos_data_all]
+    for dataset_idx in range(len(datasets)):
+        data = datasets[dataset_idx]
+        bio_y = np.argmax(data.iloc[:, -3:], axis=-1)
+        n_biomarkers = data.shape[1] - 3
+        n_x = np.round(np.sqrt(n_biomarkers)).astype(int)
+        n_y = np.ceil(np.sqrt(n_biomarkers)).astype(int)
+        # hist_c = colors[:2]
+        fig, ax = plt.subplots(n_y, n_x, figsize=(12, 12))
+        for i in range(n_biomarkers):
+            bio_X = data.iloc[:, i]
 
-        hist_dat = [bio_X[bio_y == 0],
-                    bio_X[bio_y == 2],
-                    bio_X[bio_y == 1]]
+            hist_dat = [bio_X[bio_y == 0],
+                        bio_X[bio_y == 2],
+                        bio_X[bio_y == 1]]
 
-        leg1 = ax.flat[i].hist(hist_dat,
-                               density=True,
-                               # color=hist_c,
-                               alpha=0.7,
-                               stacked=True)
-                               # bins=bin_edges)
-        ax.flat[i].set_title(f"Biomarker {i}")
-        ax.flat[i].axes.get_yaxis().set_visible(False)
+            leg1 = ax.flat[i].hist(hist_dat,
+                                   density=True,
+                                   # color=hist_c,
+                                   alpha=0.7,
+                                   stacked=True)
+                                   # bins=bin_edges)
 
-    # * Delete unused axes
-    i += 1
-    for j in range(i, n_x * n_y):
-        fig.delaxes(ax.flat[j])
-    fig.legend(leg1[2], ['CN', 'AD', 'MCI'],
-               bbox_to_anchor=(1, 1), loc="upper right", fontsize=15)
-    fig.tight_layout()
+            if dataset_idx == 0:
+                ax.flat[i].set_title(regions[i])
+            else:
+                ax.flat[i].set_title(finegrained_regions[i])
+            ax.flat[i].axes.get_yaxis().set_visible(False)
+
+        # * Delete unused axes
+        for j in range(i + 1, n_x * n_y):
+            fig.delaxes(ax.flat[j])
+        fig.legend(leg1[2], ['CN', 'AD', 'MCI'],
+                   bbox_to_anchor=(1, 1), loc="upper right", fontsize=15)
+        fig.tight_layout()
+        fig.show()
+
     plt.show()

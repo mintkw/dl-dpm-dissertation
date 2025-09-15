@@ -30,7 +30,7 @@ def greedy_ascent_creation(prob_mat, n_iter=1000, n_init=10):
                 num_iters_without_improvement += 1
 
             # stop early if no improvement observed for a certain number of iterations
-            iteration_cap = 1000
+            iteration_cap = 500
             if num_iters_without_improvement >= iteration_cap:
                 print(f"Stopping early at {iter_n} iters due to a lack of observed improvement for {iteration_cap} iterations")
                 break
@@ -56,7 +56,7 @@ def mcmc(X, mixture_models, n_iter=10000, greedy_n_iter=1000,
         new_order = greedy_dict[i][-1]
         if new_order > current_order:
             current_order = new_order
-    mcmc_samples = [current_order]  # choose the greedy initialisation that found the best ordering?
+    mcmc_samples = [current_order]  # choose the greedy initialisation that found the best ordering
     pbar = tqdm(total=n_iter)
     pbar.update(1)
     for i in range(1, n_iter):

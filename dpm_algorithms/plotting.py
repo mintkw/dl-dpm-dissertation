@@ -1,9 +1,11 @@
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
+from tqdm import tqdm
 
 from models import ae_stager, vae_stager
 from config import DEVICE
+from dpm_algorithms.autoencoder_sequence_inference import infer_seq_from_network
 
 
 def encoder_trajectories_estimate(dataloader, net, biomarker_names=None):
@@ -175,6 +177,8 @@ def predicted_stage_comparison(dataloader, net):
     ax.set_xlabel("Ground truth")
     ax.set_ylabel("Prediction")
 
+    fig.tight_layout()
+
     return fig, ax
 
 
@@ -192,7 +196,7 @@ def encoder_progression_estimate(dataloader, net, biomarker_names=None, normalis
         biomarker_names = [f"Biomarker {i}" for i in range(n_biomarkers)]
 
     # consider the full pseudo-timespan divided into a certain number of windows
-    num_bins = n_biomarkers // 2  # change this for finer or coarser grained trajectory estimates as desired
+    num_bins = 10  # change this for finer or coarser grained trajectory estimates as desired
     X_per_bin = [[] for _ in range(num_bins)]
 
     # Get data and corresponding predictions
@@ -222,10 +226,11 @@ def encoder_progression_estimate(dataloader, net, biomarker_names=None, normalis
 
     mean_X_per_stage = np.zeros((num_bins, n_biomarkers))
     for bin in range(num_bins):
-        # Skip if no data has been recorded with this predicted stage
-        if len(X_per_bin[bin]) == 0:
-            continue
-        mean_X_per_stage[bin] = np.array(X_per_bin[bin]).mean(axis=0)
+        # Use the previous bin's value if no data has been recorded with this predicted stage. If first stage, use 0
+        if len(X_per_bin[bin]) == 0 and bin > 0:
+            mean_X_per_stage[bin] = mean_X_per_stage[bin - 1]
+        else:
+            mean_X_per_stage[bin] = np.array(X_per_bin[bin]).mean(axis=0)
     mean_X_per_stage = np.array(mean_X_per_stage)
 
     min_prediction = min_prediction.cpu()
@@ -253,9 +258,15 @@ def encoder_progression_estimate(dataloader, net, biomarker_names=None, normalis
                 mean_X_per_stage[:, i], label=biomarker_names[i], color=colors[i % 10],
                 linestyle=linestyle)
 
+    # plot line representing abnormality
+    ax.plot(np.linspace(0, 1, 2), np.ones(2) * 0.5, linestyle='dashed',
+            linewidth=0.5, color='black')
+
     ax.set_xlabel("Stage")
     ax.set_ylabel("Biomarker level")
     ax.legend(loc="upper right")
+
+    fig.tight_layout()
 
     return fig, ax
 
@@ -325,9 +336,15 @@ def decoder_progression_estimate(dataloader, net, normalise=False, biomarker_nam
         ax.plot(t.cpu(), preds[:, i], label=biomarker_names[i], color=colors[i % 10],
                 linestyle=linestyle)
 
+    # plot line representing abnormality
+    ax.plot(np.linspace(0, 1, 2), np.ones(2) * 0.5, linestyle='dashed',
+            linewidth=0.5, color='black')
+
     ax.set_xlabel("Stage")
     ax.set_ylabel("Biomarker level")
     ax.legend(loc="upper right")
+
+    fig.tight_layout()
 
     return fig, ax
 
@@ -363,7 +380,7 @@ def plot_predicted_sequence(gt_ordering, pred_ordering, biomarker_names=None):
         ax.set_yticklabels(np.array(biomarker_names, dtype='object')[gt_ordering],
                            rotation=30, ha='right',
                            rotation_mode='anchor',
-                           fontsize=8,
+                           fontsize=12,
                            )
     else:
         ax.set_yticks([])
@@ -371,20 +388,80 @@ def plot_predicted_sequence(gt_ordering, pred_ordering, biomarker_names=None):
 
     ax.set_ylabel("Biomarker in reference ordering")
     ax.set_xlabel("Predicted sequence position of event")
-    fig.suptitle("Ground truth sequence position vs predicted position")
+    # fig.suptitle("Ground truth sequence position vs predicted position")
+
+    fig.tight_layout()
 
     return fig, ax
 
 
-def event_time_uncertainty_mat(gt_ordering, x, y, biomarker_names=None, weights=None):
-    # Experimental: plot inferred event time distribution for each biomarker, as an uncertainty matrix.
+def positional_var_diagram(gt_ordering, dataset, net, n_samples=50, biomarker_names=None):
+    # Experimental: plot an uncertainty matrix of event times.
     # Designed to look visually consistent with the output of kde_ebm.plotting.mcmc_uncert_mat
     # Arguments are np arrays
     # y here is the position of the biomarker in the ground truth sequence, just so the diagram is intuitive.
 
     n_biomarkers = gt_ordering.shape[0]
+    dataset_size = len(dataset)
+
     if biomarker_names is None:
         biomarker_names = ['BM{}'.format(x) for x in range(n_biomarkers)]
+
+    matrix = np.zeros((n_biomarkers, n_biomarkers))
+
+    with torch.no_grad():
+        positional_estimates = []
+        for _ in tqdm(range(n_samples), desc="Sampling sequences for PVD computation"):
+            # Create a bootstrap dataset by sampling with replacement
+            bootstrap_dataset_idx = np.random.choice(np.arange(dataset_size), dataset_size)
+            bootstrap_dataset = torch.utils.data.Subset(dataset, bootstrap_dataset_idx)
+            bootstrap_dataloader = torch.utils.data.DataLoader(bootstrap_dataset, batch_size=16, shuffle=True)
+
+            # Compute sequence estimate
+            sequence_estimate = infer_seq_from_network(dataloader=bootstrap_dataloader, net=net).cpu()
+            # Convert to positions
+            positional_estimate = np.argsort(sequence_estimate)
+
+            matrix[np.arange(n_biomarkers), positional_estimate] += 1
+            # positional_estimates.append(np.argsort(sequence_estimate))
+
+    # Compute event positional uncertainty by the proportion of time each biomarker appears in each sequence position
+    matrix = matrix[gt_ordering]
+    matrix = matrix / np.sum(matrix, axis=0)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(matrix, interpolation='nearest', cmap='Purples')
+
+    if n_biomarkers > 50:
+        stp = 5
+    elif n_biomarkers > 20:
+        stp = 2
+    else:
+        stp = 1
+
+    tick_marks_x = np.arange(0, n_biomarkers, stp)
+    x_labels = range(1, n_biomarkers + 1, stp)
+    ax.set_xticks(tick_marks_x)
+    ax.set_xticklabels(x_labels, rotation=0, fontsize=8)
+
+    if n_biomarkers <= 50:
+        ax.set_yticks(np.arange(n_biomarkers))
+        ax.set_yticklabels(np.array(biomarker_names, dtype='object')[gt_ordering],
+                           rotation=30, ha='right',
+                           rotation_mode='anchor',
+                           fontsize=12,
+                           )
+    else:
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+
+    ax.set_ylabel("Biomarker in reference ordering")
+    ax.set_xlabel("Predicted sequence position of event")
+    fig.suptitle("Positional variance diagram")
+    fig.tight_layout()
+
+    return fig, ax
+
 
     fig, ax = plt.subplots(figsize=(8, 8))
     hist, xedges, yedges = np.histogram2d(x, y, bins=(n_biomarkers, n_biomarkers), weights=weights)
@@ -415,5 +492,7 @@ def event_time_uncertainty_mat(gt_ordering, x, y, biomarker_names=None, weights=
     ax.set_ylabel("Biomarker (in order of ground truth sequence)")
     ax.set_xlabel("Predicted pseudotime of event")
     fig.suptitle("Event time uncertainty matrix")
+
+    fig.tight_layout()
 
     return fig, ax

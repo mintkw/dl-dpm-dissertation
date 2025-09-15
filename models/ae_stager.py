@@ -7,7 +7,7 @@ from tqdm import tqdm
 from scipy import stats
 
 from config import DEVICE, SAVED_MODEL_DIR
-from datasets.synthetic_dataset import SyntheticDataset
+from datasets.biomarker_dataset import BiomarkerDataset
 from dpm_algorithms.evaluation import evaluate_autoencoder
 from models.autoencoder import AutoEncoder
 

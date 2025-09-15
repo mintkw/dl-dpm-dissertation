@@ -14,7 +14,7 @@ from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNI_DIR
 from dpm_algorithms.evaluation import evaluate_sequence
 
 
-def run_kde_ebm(file_dir, file_name, plot=False):
+def run_kde_ebm(file_dir, file_name, greedy_n_init=50, plot=False):
     # Get our biomarker data X, numeric disease labels y, names for each
     # numeric disease label cname, and column names of our biomarker data
     # bmname.
@@ -41,7 +41,7 @@ def run_kde_ebm(file_dir, file_name, plot=False):
     # MCMC optimisation
     print("Fitting disease sequence with greedy ascent and MCMC")
     res = mcmc.mcmc(X, mixture_models, n_iter=10000,
-                    greedy_n_iter=5000, greedy_n_init=50, plot=plot)
+                    greedy_n_iter=10000, greedy_n_init=greedy_n_init, plot=plot)
 
     # Then plot these using a positional variance diagram to visualise
     # any uncertainty in the sequence
@@ -71,7 +71,7 @@ def run_kde_ebm(file_dir, file_name, plot=False):
 
 if __name__ == '__main__':
     # Run KDE-EBM on a specified dataset
-    dataset_name = "synthetic_120_10_0"
+    dataset_name = "synthetic_3000_250_0"
     file_dir = SIMULATED_OBS_TRAIN_DIR
 
     # Create a copy of the dataset formatted for use with the KDE-EBM

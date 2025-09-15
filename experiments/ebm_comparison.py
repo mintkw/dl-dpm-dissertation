@@ -1,5 +1,6 @@
 import json
 
+import pandas as pd
 import torch
 import itertools
 import time
@@ -7,21 +8,20 @@ import csv
 import numpy as np
 import os
 
+from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
 from datasets.simulate_data import generate_data
-from datasets.kde_ebm_dataset_prep import prepare_csv_for_kde_ebm
-from dpm_algorithms.run_kde_ebm import run_kde_ebm
-from dpm_algorithms.train_autoencoder import run_training
-from datasets.synthetic_dataset import SyntheticDataset
-from models import ae_stager, vae_stager
+from dpm_algorithms import plotting, autoencoder_sequence_inference, train_autoencoder
 from dpm_algorithms.evaluation import evaluate_autoencoder, evaluate_sequence
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
-from dpm_algorithms.autoencoder_sequence_inference import infer_seq_from_network
-
+from dpm_algorithms.run_kde_ebm import run_kde_ebm
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR
+from datasets.kde_ebm_dataset_prep import prepare_csv_for_kde_ebm
+from datasets.biomarker_dataset import BiomarkerDataset
+from models import vae_stager, ae_stager
 
 if __name__ == "__main__":
-    n_biomarkers_all = [10, 50, 100, 250]
+    n_biomarkers_all = [10, 50, 100, 200]
 
     time_taken_ae = []
     time_taken_vae = []
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         # Create a copy of the dataset formatted for use with the KDE-EBM
         prepare_csv_for_kde_ebm(os.path.join(SIMULATED_OBS_TRAIN_DIR, dataset_name + ".csv"), suffix="kde-ebm")
 
-        train_dataset = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+        train_dataset = BiomarkerDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                          label_directory=SIMULATED_LABEL_TRAIN_DIR)
 
         # Split training set
@@ -72,9 +72,9 @@ if __name__ == "__main__":
 
         # Run training loop
         start_time = time.time()
-        run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
-                     opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
-                     device=DEVICE)
+        train_autoencoder.run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
+                                       opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
+                                       device=DEVICE, min_epochs=50)
 
         # Load best model obtained from training, to run inference and evaluate.
         ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + dataset_name + ".pth")
@@ -84,12 +84,12 @@ if __name__ == "__main__":
         ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
 
         # Run inference and stop the timer
-        seq_pred = infer_seq_from_network(dataloader=train_loader, net=ae).cpu()
+        seq_pred = autoencoder_sequence_inference.infer_seq_from_network(dataloader=train_loader, net=ae).cpu()
         time_taken = time.time() - start_time  # in seconds
         time_taken_vae.append(time_taken)
 
         # Read in ground truth sequence
-        seq_label_file = os.path.join(SIMULATED_LABEL_TEST_DIR, dataset_name + "_seq.json")
+        seq_label_file = os.path.join(SIMULATED_LABEL_TRAIN_DIR, dataset_name + "_seq.json")
         with open(seq_label_file, 'r') as f:
             seq_gt = json.load(f)
 
@@ -110,9 +110,9 @@ if __name__ == "__main__":
 
         # Run training loop
         start_time = time.time()
-        run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
-                     opt_ae, ae_stager.ae_criterion, model_type="ae",
-                     device=DEVICE)
+        train_autoencoder.run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
+                                       opt_ae, ae_stager.ae_criterion, model_type="ae",
+                                       device=DEVICE, min_epochs=50)
 
         # Load best model obtained from training, to run inference and evaluate.
         ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + dataset_name + ".pth")
@@ -122,12 +122,12 @@ if __name__ == "__main__":
         ae_dec.load_state_dict(torch.load(ae_dec_model_path, map_location=DEVICE))
 
         # Run inference and stop the timer
-        seq_pred = infer_seq_from_network(dataloader=train_loader, net=ae).cpu()
+        seq_pred = autoencoder_sequence_inference.infer_seq_from_network(dataloader=train_loader, net=ae).cpu()
         time_taken = time.time() - start_time  # in seconds
         time_taken_ae.append(time_taken)
 
         # Read in ground truth sequence
-        seq_label_file = os.path.join(SIMULATED_LABEL_TEST_DIR, dataset_name + "_seq.json")
+        seq_label_file = os.path.join(SIMULATED_LABEL_TRAIN_DIR, dataset_name + "_seq.json")
         with open(seq_label_file, 'r') as f:
             seq_gt = json.load(f)
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         sequence_scores_ae.append(evaluate_sequence(seq_pred, seq_gt))
 
         # ------------ Run KDE-EBM ---------------
-        ml_order, time_taken = run_kde_ebm(file_dir=SIMULATED_OBS_TRAIN_DIR, file_name=dataset_name)
+        ml_order, time_taken, stages = run_kde_ebm(file_dir=SIMULATED_OBS_TRAIN_DIR, file_name=dataset_name)
         time_taken_ebm.append(time_taken)
 
         # Evaluate the predicted sequence
@@ -151,3 +151,42 @@ if __name__ == "__main__":
         writer.writerows([[time_taken_vae[i], time_taken_ae[i], time_taken_ebm[i],
                            sequence_scores_vae[i], sequence_scores_ae[i], sequence_scores_ebm[i]]
                           for i in range(len(n_biomarkers_all))])
+
+    df = pd.read_csv('ebm_comparison.csv')
+
+    ebm_time = df.loc[:, "ebm_time"]
+    ae_time = df.loc[:, "ae_time"]
+    vae_time = df.loc[:, "vae_time"]
+
+    ebm_kt = df.loc[:, "ebm_kt_score"]
+    ae_kt = df.loc[:, "ae_kt_score"]
+    vae_kt = df.loc[:, "vae_kt_score"]
+
+    # Plot time
+    fig, ax = plt.subplots(figsize=(9, 6))
+    colours = ['cornflowerblue', 'goldenrod', 'lightcoral']
+    labels = ['EBM', 'Autoencoder', 'VAE']
+
+    lines = [ebm_time, ae_time, vae_time]
+    for i in range(len(lines)):
+        line = lines[i]
+        ax.plot(n_biomarkers_all, line, c=colours[i], marker='o', label=labels[i])
+    fig.suptitle("Time taken to run algorithms")
+    ax.set_xlabel("No. biomarkers")
+    ax.set_ylabel("Runtime (s)")
+    ax.legend(loc="upper right")
+    fig.show()
+
+    # Plot Kendall's tau
+    fig, ax = plt.subplots(figsize=(9, 6))
+    lines = [ebm_kt, ae_kt, vae_kt]
+    for i in range(len(lines)):
+        line = lines[i]
+        ax.plot(n_biomarkers_all, line, c=colours[i], marker='o', label=labels[i])
+    fig.suptitle("Kendall's tau score achieved by algorithms")
+    ax.set_xlabel("No. biomarkers")
+    ax.set_ylabel("Kendall's tau score")
+    ax.legend(loc="upper right")
+    fig.show()
+
+    plt.show()

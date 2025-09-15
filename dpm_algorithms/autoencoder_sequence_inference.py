@@ -8,7 +8,7 @@ from dpm_algorithms import plotting
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, \
     SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
 from models import ae_stager, vae_stager
-from datasets.synthetic_dataset import SyntheticDataset
+from datasets.biomarker_dataset import BiomarkerDataset
 from dpm_algorithms.evaluation import evaluate_autoencoder, evaluate_sequence
 
 
@@ -27,7 +27,7 @@ def infer_seq_from_network(dataloader, net):
             min_prediction = min(min_prediction, preds.min())
             max_prediction = max(max_prediction, preds.max())
 
-        num_bins = 50
+        num_bins = 10
         X_per_bin = [[] for _ in range(num_bins)]
         for X, _ in dataloader:
             preds = net.predict_stage(X)
@@ -44,21 +44,29 @@ def infer_seq_from_network(dataloader, net):
 
         # Get the minimum and maximum window averages found.
         mean_X_per_bin = []
+        # for bin in range(num_bins):
+        #     # Skip if no data has been recorded in this window
+        #     if len(X_per_bin[bin]) == 0:
+        #         X_per_bin[bin] = [torch.zeros(n_biomarkers, device=DEVICE)]
+        #     mean_X_per_bin.append(torch.row_stack(X_per_bin[bin]).mean(dim=0))
         for bin in range(num_bins):
-            # Skip if no data has been recorded in this window
+            # Use the previous bin's value if no data has been recorded with this predicted stage. If first stage, use 0
             if len(X_per_bin[bin]) == 0:
-                continue
+                if bin > 0:
+                    X_per_bin[bin] = [mean_X_per_bin[bin - 1]]
+                else:
+                    X_per_bin[bin] = [torch.zeros(n_biomarkers, device=DEVICE)]
             mean_X_per_bin.append(torch.row_stack(X_per_bin[bin]).mean(dim=0))
         mean_X_per_bin = torch.row_stack(mean_X_per_bin)
 
         midpoints = 0.5
 
-        estimated_onset_times = torch.zeros(n_biomarkers, device=DEVICE)
-        counts = torch.zeros(n_biomarkers,
-                             device=DEVICE)  # number of measurements per biomarker that have fallen in a window of 0.5 so far
-        total_weights = torch.zeros(n_biomarkers, device=DEVICE)
-        for X, _ in dataloader:
-            preds = net.predict_stage(X)
+        # estimated_onset_times = torch.zeros(n_biomarkers, device=DEVICE)
+        # counts = torch.zeros(n_biomarkers,
+        #                      device=DEVICE)  # number of measurements per biomarker that have fallen in a window of 0.5 so far
+        # total_weights = torch.zeros(n_biomarkers, device=DEVICE)
+        # for X, _ in dataloader:
+        #     preds = net.predict_stage(X)
 
             # # Get the predicted stage of Xs that are a percentage of the full range away from the corresponding mean
             # # with delta being that percentage
@@ -75,22 +83,74 @@ def infer_seq_from_network(dataloader, net):
             #                                    torch.sum(preds_to_consider, dim=0)[idx_to_adjust]) / counts[
             #                                       idx_to_adjust]
 
-            # Compute a weighted sum instead, with weights being a function of prediction and midpoint.
-            decay_coeff = 5000  # describes intensity of exponential decay as measurement leaves the midpoint
-            w = torch.exp(-decay_coeff * (X - midpoints) ** 2)
-            weighted_preds = (preds * w).sum(0)
-            total_weights += w.sum(0)
-            estimated_onset_times += weighted_preds
+            # # Compute a weighted sum instead, with weights being a function of prediction and midpoint.
+            # decay_coeff = 1000  # describes intensity of exponential decay as measurement leaves the midpoint
+            # w = torch.exp(-decay_coeff * (X - midpoints) ** 2)
+            # weighted_preds = (preds * w).sum(0)
+            # total_weights += w.sum(0)
+            # estimated_onset_times += weighted_preds
 
-    estimated_onset_times /= total_weights
+    # estimated_onset_times /= total_weights
 
     # Encoder ver
-    # Search over the windows. Average the bins of the closest values on either side of each midpoint
-    estimated_above = torch.argmin(torch.max(torch.zeros_like(mean_X_per_bin), mean_X_per_bin - midpoints), dim=0)
-    estimated_below = torch.argmin(torch.max(torch.zeros_like(mean_X_per_bin), midpoints - mean_X_per_bin), dim=0)
-    estimated_onset_times = (estimated_below + estimated_above) / 2
-    # estimated_onset_times = torch.argmin(torch.abs(mean_X_per_bin - midpoints), dim=0)
+    # Search over the windows. Interpolate between the bins of the closest values on either side of each midpoint
+    temp = mean_X_per_bin - midpoints
+    temp[temp < 0] = float('inf')
+    estimated_stage_above = torch.argmin(temp, dim=0)
+    estimated_midpoint_above = mean_X_per_bin[estimated_stage_above, torch.arange(n_biomarkers)]
+    temp = midpoints - mean_X_per_bin
+    temp[temp < 0] = float('inf')
+    estimated_stage_below = torch.argmin(temp, dim=0)
+    estimated_midpoint_below = mean_X_per_bin[estimated_stage_below, torch.arange(n_biomarkers)]
 
+    # Scale estimations back onto pseudotime latent
+    estimated_stage_above = min_prediction + (max_prediction - min_prediction) * (estimated_stage_above / (num_bins - 1))
+    estimated_stage_below = min_prediction + (max_prediction - min_prediction) * (estimated_stage_below / (num_bins - 1))
+
+    # estimated_stage_above = torch.argmin(torch.max(torch.zeros_like(mean_X_per_bin), mean_X_per_bin - midpoints), dim=0)
+    # estimated_stage_below = torch.argmin(torch.max(torch.zeros_like(mean_X_per_bin), midpoints - mean_X_per_bin), dim=0)
+
+    estimated_onset_times = estimated_stage_below + ((estimated_stage_above - estimated_stage_below) *
+                                                     ((0.5 - estimated_midpoint_below) / (
+                                                             estimated_midpoint_above - estimated_midpoint_below)))
+    # estimated_onset_times = torch.argmin(torch.abs(mean_X_per_bin - midpoints), dim=0).double()
+    # estimated_onset_times = min_prediction + (max_prediction - min_prediction) * (estimated_onset_times / num_bins)  # scale back onto pseudotime
+
+    # for i in range(num_bins):
+    #     print(mean_X_per_bin[i])
+
+    # print(estimated_onset_times)
+
+    # Outputs one figure of biomarker trajectories computed by averaging biomarkers over binned encoder outputs.
+    # plots only the first few biomarkers.
+    # normalised: if True, scales every biomarker trajectory between 0 and 1 inclusive.
+
+    # # Plot mean biomarker against predicted discrete stage on one figure
+    # fig, ax = plt.subplots(figsize=(12, 9))
+    # fig.suptitle("Mean biomarker level against predicted discretised stage")
+    #
+    # colors = ['C{}'.format(x) for x in range(10)]
+    # for i in range(n_biomarkers):
+    #     if i < 10:
+    #         linestyle = "solid"
+    #     else:
+    #         linestyle = "dotted"
+    #
+    #     ax.plot(np.linspace(min_prediction.cpu(), max_prediction.cpu(), num_bins),
+    #             mean_X_per_bin[:, i].cpu(), label=dataloader.dataset.biomarker_names[i], color=colors[i % 10],
+    #             linestyle=linestyle)
+    #     # ax.scatter(np.linspace(min_prediction.cpu(), max_prediction.cpu(), num_bins),
+    #     #            mean_X_per_bin[:, i].cpu(), c=colors[i % 10])
+    #     ax.scatter(estimated_onset_times[i].cpu(), 0.5 * np.ones(1), c=colors[i % 10])
+    #
+    #     # ax.scatter(np.array([estimated_stage_below[i].cpu(), estimated_stage_above[i].cpu()]),
+    #     #            np.array([estimated_midpoint_below[i].cpu(), estimated_midpoint_above[i].cpu()]), c=colors[i % 10])
+    #
+    # ax.set_xlabel("Stage")
+    # ax.set_ylabel("Biomarker level")
+    # ax.legend(loc="upper right")
+    # fig.show()
+    #
     # print(estimated_onset_times)
 
     return torch.argsort(estimated_onset_times)
@@ -108,10 +168,10 @@ if __name__ == "__main__":
     # ---------------------------------------
 
     # Load datasets
-    train_dataset = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+    train_dataset = BiomarkerDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                      label_directory=SIMULATED_LABEL_TRAIN_DIR)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_dataset = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
+    val_dataset = BiomarkerDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
                                    label_directory=SIMULATED_LABEL_TEST_DIR)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8, shuffle=True)
 
@@ -160,4 +220,3 @@ if __name__ == "__main__":
     print("Kendall's tau :", evaluate_sequence(window_seq_val, seq_gt))
 
     plt.show()
-

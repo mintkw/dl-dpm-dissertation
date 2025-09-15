@@ -2,6 +2,7 @@ import numpy as np
 import os
 import json
 import matplotlib.pyplot as plt
+import torch
 from scipy import stats
 import itertools
 import pandas as pd
@@ -282,7 +283,7 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, onsets_stages=None, sampl
         i += 1
         for j in range(i, n_x * n_y):
             fig.delaxes(ax.flat[j])
-        fig.legend(leg1[2], ['CN', 'AD', 'MCI'],
+        fig.legend(leg1[2], ['Stage-0', 'End-stage', 'AD'],
                    bbox_to_anchor=(1, 1), loc="upper right", fontsize=15)
         fig.tight_layout()
         plt.show()
@@ -336,7 +337,7 @@ def simulateDPMdata(seq=None, n_biomarkers=2, n_mci=0, onsets_stages=None, sampl
     return X, ks_mci, plot_vars
 
 
-def generate_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, means_normal=None, means_abnormal=None,
+def generate_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, seq=None, means_normal=None, means_abnormal=None,
                   sds_normal=None, sds_abnormal=None, biomarker_labels=None, onsets_stages=None, gradients=None,
                   plot=False, file_name=None):
     # Generate and save a training set and test set with identical settings as specified in the arguments.
@@ -348,9 +349,9 @@ def generate_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, means
     if means_abnormal is None:
         means_abnormal = np.ones(n_biomarkers)
     if sds_normal is None:
-        sds_normal = 0.05 * np.ones(n_biomarkers)
+        sds_normal = np.ones(n_biomarkers) * 0.05
     if sds_abnormal is None:
-        sds_abnormal = 0.05 * np.ones(n_biomarkers)
+        sds_abnormal = np.ones(n_biomarkers) * 0.05
     if biomarker_labels is None:
         biomarker_labels = [str(i) for i in range(n_biomarkers)]
 
@@ -362,8 +363,9 @@ def generate_data(n_biomarkers, n_mci, n_controls, n_patients, num_sets=1, means
     # generate num_sets of datasets with their own sequences.
     for i in range(num_sets):
         # uniformly sample a sequence from all possible permutations
-        seq = np.arange(n_biomarkers)[:, None]
-        seq = np.random.permutation(seq).tolist()
+        if seq is None:
+            seq = np.arange(n_biomarkers)[:, None]
+            seq = np.random.permutation(seq).tolist()
 
         obs_directories = [SIMULATED_OBS_TEST_DIR, SIMULATED_OBS_TRAIN_DIR]
         label_directories = [SIMULATED_LABEL_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR]

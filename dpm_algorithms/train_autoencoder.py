@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, ADNI_DIR
-from datasets.synthetic_dataset import SyntheticDataset
+from datasets.biomarker_dataset import BiomarkerDataset
 from dpm_algorithms.evaluation import evaluate_autoencoder
 
 from models import ae_stager, vae_stager
@@ -101,10 +101,10 @@ if __name__ == "__main__":
     # Load data
     dataset = None
     if dataset_type == "synthetic":
-        dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+        dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                    label_directory=SIMULATED_LABEL_TRAIN_DIR)
     elif dataset_type == "adni":
-        dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=ADNI_DIR)
+        dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=ADNI_DIR)
 
     # Split training set
     train_indices, val_indices = train_test_split(range(len(dataset)), train_size=0.8)

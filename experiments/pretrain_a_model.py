@@ -10,7 +10,7 @@ from config import SIMULATED_OBS_TRAIN_DIR, SIMULATED_LABEL_TRAIN_DIR, DEVICE, S
     SIMULATED_LABEL_TEST_DIR, SIMULATED_OBS_TEST_DIR
 from datasets import simulate_data
 from dpm_algorithms import train_autoencoder
-from datasets.synthetic_dataset import SyntheticDataset
+from datasets.biomarker_dataset import BiomarkerDataset
 from dpm_algorithms.evaluation import evaluate_autoencoder
 from models import vae_stager, ae_stager
 
@@ -42,15 +42,15 @@ if __name__ == "__main__":
     n_patients = 100
     file_name = "noisy_example"
 
-    means_normal = np.random.normal(loc=-0.5, scale=0.2, size=n_biomarkers)
-    # compute in this way to force increasing trajectories
-    means_abnormal = means_normal + (np.random.normal(loc=1, scale=0.2, size=n_biomarkers) ** 2)
+    # means_normal = np.random.normal(loc=-0.5, scale=0.2, size=n_biomarkers)
+    # # compute in this way to force increasing trajectories
+    # means_abnormal = means_normal + (np.random.normal(loc=1, scale=0.2, size=n_biomarkers) ** 2)
 
     sds_normal = np.random.rand(n_biomarkers) * 0.5
     sds_abnormal = np.random.rand(n_biomarkers) * 0.5
 
     simulate_data.generate_data(n_biomarkers=n_biomarkers, n_mci=n_mci, n_controls=n_controls, n_patients=n_patients,
-                                means_normal=means_normal, means_abnormal=means_abnormal,
+                                # means_normal=means_normal, means_abnormal=means_abnormal,
                                 sds_normal=sds_normal, sds_abnormal=sds_abnormal, plot=False,
                                 num_sets=num_sets, file_name=file_name)
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     model_name = f"pretrained_{n_biomarkers}bm"
 
     # Load data
-    train_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+    train_dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                      label_directory=SIMULATED_LABEL_TRAIN_DIR)
 
     # Split training set
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         dec.load_state_dict(torch.load(dec_model_path, map_location=DEVICE))
 
         # EVALUATION ON TEST SET ------------------------------------
-        test_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR,
+        test_dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TEST_DIR,
                                         label_directory=SIMULATED_LABEL_TEST_DIR)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=16, shuffle=True)
 
@@ -119,4 +119,3 @@ if __name__ == "__main__":
 
         print(f"Staging RMSE of {model_type} on test set: {staging_rmse}")
         print(f"Reconstruction MSE of {model_type} on test set: {reconstruction_mse}")
-

@@ -10,7 +10,7 @@ import json
 from config import DEVICE
 
 
-class SyntheticDataset(Dataset):
+class BiomarkerDataset(Dataset):
     def __init__(self, dataset_names, obs_directory, label_directory=None):
         """
         Args:
@@ -54,7 +54,7 @@ class SyntheticDataset(Dataset):
         if len(self.labels) > 0:
             label = self.labels[idx]
         else:
-            label = observations.shape[0] * torch.argmax(self.obs[idx][-3:]) / 2  # simply encode CN, MCI, AD as the label
+            label = torch.argmax(self.obs[idx][-3:])  # simply encode CN, MCI, AD as the label
 
         return observations, label
 

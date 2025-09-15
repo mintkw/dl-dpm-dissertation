@@ -3,7 +3,7 @@ import torch
 import os
 
 from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_OBS_TRAIN_DIR, ADNI_DIR
-from datasets.synthetic_dataset import SyntheticDataset
+from datasets.biomarker_dataset import BiomarkerDataset
 from models import ae_stager, vae_stager
 from dpm_algorithms import plotting
 
@@ -30,10 +30,10 @@ if __name__ == "__main__":
 
     # Load training set
     if dataset_type == "synthetic":
-        train_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
+        train_dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=SIMULATED_OBS_TRAIN_DIR, label_directory=SIMULATED_LABEL_TRAIN_DIR)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
     elif dataset_type == "adni":
-        train_dataset = SyntheticDataset(dataset_names=dataset_names, obs_directory=ADNI_DIR)
+        train_dataset = BiomarkerDataset(dataset_names=dataset_names, obs_directory=ADNI_DIR)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
 
     biomarker_names = train_dataset.biomarker_names

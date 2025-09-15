@@ -14,13 +14,13 @@ import os
 from sklearn.model_selection import train_test_split
 
 from datasets.simulate_data import generate_data
-from dpm_algorithms.train_autoencoder import run_training
-from dpm_algorithms.evaluation import evaluate_autoencoder, evaluate_sequence
+from dpm_algorithms import plotting, train_autoencoder
 from dpm_algorithms.autoencoder_sequence_inference import infer_seq_from_network
-from datasets.synthetic_dataset import SyntheticDataset
+from dpm_algorithms.evaluation import evaluate_autoencoder, evaluate_sequence
+from datasets.biomarker_dataset import BiomarkerDataset
 from models import ae_stager, vae_stager
-from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, SIMULATED_LABEL_TEST_DIR
-
+from config import DEVICE, SAVED_MODEL_DIR, SIMULATED_OBS_TRAIN_DIR, SIMULATED_OBS_TEST_DIR, SIMULATED_LABEL_TRAIN_DIR, \
+    SIMULATED_LABEL_TEST_DIR
 
 if __name__ == "__main__":
     # Generate sets of data with varying standard deviations of noise
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
             for trial in range(n_trials):
                 dataset_name = f"{file_name}_{trial}"
-                train_dataset = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
+                train_dataset = BiomarkerDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TRAIN_DIR,
                                                  label_directory=SIMULATED_LABEL_TRAIN_DIR)
 
                 # Split training set
@@ -87,7 +87,7 @@ if __name__ == "__main__":
                 train_loader = torch.utils.data.DataLoader(train_split, batch_size=16, shuffle=True)
                 val_loader = torch.utils.data.DataLoader(val_split, batch_size=16, shuffle=True)
 
-                test_set = SyntheticDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
+                test_set = BiomarkerDataset(dataset_names=dataset_name, obs_directory=SIMULATED_OBS_TEST_DIR,
                                             label_directory=SIMULATED_LABEL_TEST_DIR)
                 test_loader = torch.utils.data.DataLoader(test_set, batch_size=16, shuffle=True)
 
@@ -107,9 +107,9 @@ if __name__ == "__main__":
 
                 # Run training loop
                 start_time = time.time()
-                run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
-                             opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
-                             device=DEVICE)
+                train_autoencoder.run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
+                                               opt_vae, vae_stager.vae_criterion_wrapper(beta=1), model_type="vae",
+                                               device=DEVICE, min_epochs=50)
 
                 # Load best model obtained from training, to run inference and evaluate.
                 ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "vae", "enc_" + dataset_name + ".pth")
@@ -148,9 +148,9 @@ if __name__ == "__main__":
 
                 # Run training loop
                 start_time = time.time()
-                run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
-                             opt_ae, ae_stager.ae_criterion, model_type="ae",
-                             device=DEVICE)
+                train_autoencoder.run_training(n_epochs, ae, dataset_name, train_loader, val_loader,
+                                               opt_ae, ae_stager.ae_criterion, model_type="ae",
+                                               device=DEVICE, min_epochs=50)
 
                 # Load best model obtained from training, to run inference and evaluate.
                 ae_enc_model_path = os.path.join(SAVED_MODEL_DIR, "ae", "enc_" + dataset_name + ".pth")
